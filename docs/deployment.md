@@ -16,6 +16,8 @@
 
 `blog`의 workers.dev 주소는 배포 설정으로 활성화합니다. 백엔드는 프론트의 `API` service binding으로 접근하므로 별도 공개 주소가 없어도 됩니다.
 
+프론트의 운영 도메인은 `https://21stark.dev`와 `https://21st-ark.dev`입니다. 두 주소 모두 `blog` Worker의 Custom Domain으로 연결하고 프론트 `wrangler.jsonc`의 `routes`에 유지합니다. API는 각 도메인의 `/api/*`에서 같은 백엔드로 전달합니다. 이미지는 공통으로 `https://media.21stark.dev`를 사용합니다.
+
 1. Cloudflare D1 데이터베이스 `21st-ark-db`를 생성합니다.
 2. 반환된 실제 UUID를 `apps/backend/wrangler.jsonc`의 `database_id`에 넣습니다. 현재 운영 D1 ID는 반영되어 있습니다. 새 환경을 만들 때는 해당 환경의 UUID로 교체합니다.
 3. `21st-ark-api` Worker를 먼저 배포합니다. `deploy:backend`는 D1 ID가 아직 자리표시자이면 배포를 중단합니다.
