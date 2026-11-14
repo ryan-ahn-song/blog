@@ -10,7 +10,7 @@ const { Miniflare, convertV4MiniflareOptions } = require('miniflare');
 const mf = new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:fileURLToPath(new URL('../apps/backend/dist/index.js',import.meta.url)),compatibilityDate:'2026-11-10',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'auth-test'},r2Buckets:['MEDIA']}));
 try {
   const db=await mf.getD1Database('DB');
-  for (const file of ['0001_auth.sql','0002_google_roles_posts.sql']) {
+  for (const file of ['0001_auth.sql','0002_google_roles_posts.sql','0003_live_content.sql']) {
     const sql=await readFile(new URL('../apps/backend/migrations/'+file,import.meta.url),'utf8');
     for(const statement of sql.split(';').filter(s=>s.trim()))await db.prepare(statement).run();
   }

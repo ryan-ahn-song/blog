@@ -1,7 +1,7 @@
 import { verifyPassword } from './password';
 import { json, readBody, HttpError } from './http';
 import { handleGoogle } from './google';
-import { type AuthEnv, type UserRow, currentUser, publicUser, checkOrigin, readCookie, cookie, createSession, digest, limited, now } from './session';
+import { type AuthEnv, type UserRow, currentUser, requireUser, publicUser, checkOrigin, readCookie, cookie, createSession, digest, limited, now } from './session';
 export async function handleAuth(request: Request, env: AuthEnv): Promise<Response> {
   const path = new URL(request.url).pathname;
   if (path === '/api/auth/google' || path === '/api/auth/callback/google') return handleGoogle(request, env);
@@ -9,6 +9,16 @@ export async function handleAuth(request: Request, env: AuthEnv): Promise<Respon
   if (request.method === 'GET' && path === '/api/auth/me') {
     const user = await currentUser(request, env);
     return json({ user: user ? publicUser(user) : null }, 200, user ? {} : { 'Set-Cookie': cookie(request, 'session', '', 0) });
+  }
+  if (path === '/api/auth/profile') {
+    if (request.method !== 'PATCH') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'PATCH'});
+    checkOrigin(request);
+    const actor = await requireUser(request,env);
+    const body = await readBody(request);
+    if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length>80 || typeof body.bio !== 'string' || body.bio.length>160 || typeof body.version !== 'number' || !Number.isSafeInteger(body.version)) throw new HttpError(400,'이름(80자)과 소개(160자)를 확인해 주세요.');
+    const user = await env.DB.prepare('UPDATE auth_users SET name=?,bio=?,version=version+1 WHERE id=? AND version=? RETURNING *').bind(body.name.trim(),body.bio.trim(),actor.id,body.version).first<UserRow>();
+    if (!user) throw new HttpError(409,'프로필이나 권한이 변경되었습니다. 프로필을 다시 열어 주세요.');
+    return json({user:publicUser(user)});
   }
   if (!['/api/auth/login', '/api/auth/logout'].includes(path)) throw new HttpError(404, '요청한 경로를 찾을 수 없습니다.');
   if (request.method !== 'POST') return json({ error: '지원하지 않는 요청입니다.' }, 405, { Allow: 'POST' });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, jsonRequest } from './api';
 const blank = { title: '', summary: '', body: '', category: 'tech', image_key: null, image: null, status: 'draft' };
-export default function Editor({ user, post, onSaved, onDirty }) {
+export default function Editor({ user, post, topics, onSaved, onDirty }) {
   const [record, setRecord] = useState(post);
   const storageKey = 'ark-draft:' + user.id + ':' + (post?.id || 'new');
   const [form, setForm] = useState(() => { try { const saved = JSON.parse(localStorage.getItem(storageKey)); if (saved && (!post || saved.revision === post.revision)) return { ...blank, ...saved }; } catch {} return { ...blank, ...post }; });
@@ -35,12 +35,17 @@ export default function Editor({ user, post, onSaved, onDirty }) {
     } catch (e) { setError(e.message); } finally { setPending(false); }
   }
   const disabled = pending || uploading;
+  const categories=topics.filter(t=>t.id===t.category);
+  const selectedTopics=form.topic_ids??[form.category];
+  function changeCategory(category){setForm(f=>({...f,category,topic_ids:[category]}));setDirty(true);setNotice('');}
+  function changeTopic(id,checked){change('topic_ids',checked?[...new Set([...selectedTopics,id])]:selectedTopics.filter(value=>value!==id));}
   return <section className="editor" aria-label="글 작성">
     <div className="workspace-intro"><div><p className="eyebrow">WRITE YOUR NEXT STORY</p><h2>{record ? '이야기 이어 쓰기' : '새로운 이야기'}</h2><p>생각을 적고, 준비가 되면 함께 나눠 보세요.</p></div><span className="status-tag">{record?.status === 'published' ? '발행한 글' : '초안'}</span></div>
     <div className="editor-toolbar"><div className="segmented"><button type="button" aria-pressed={!preview} onClick={() => setPreview(false)}>작성</button><button type="button" aria-pressed={preview} onClick={() => setPreview(true)}>미리보기</button></div><span className="editor-count">{form.body.length.toLocaleString()} / 80,000자</span></div>
-    {preview ? <article className="editor-preview"><p className="eyebrow">{form.category === 'tech' ? '개발 · 기술' : '일상 · 에세이'}</p><h2>{form.title || '제목을 입력해 주세요'}</h2><p className="preview-summary">{form.summary}</p>{form.image && <img src={form.image} alt="대표 이미지"/>}<div className="prose">{form.body || '아직 작성한 내용이 없어요.'}</div></article> : <form id="post-editor" onSubmit={e => { e.preventDefault(); save('published'); }}>
+    {preview ? <article className="editor-preview"><p className="eyebrow">{topics.find(t=>t.id===form.category)?.name}</p><h2>{form.title || '제목을 입력해 주세요'}</h2><p className="preview-summary">{form.summary}</p>{form.image && <img src={form.image} alt="대표 이미지"/>}<div className="prose">{form.body || '아직 작성한 내용이 없어요.'}</div></article> : <form id="post-editor" onSubmit={e => { e.preventDefault(); save('published'); }}>
       <fieldset disabled={disabled}>
-        <label htmlFor="post-category">주제</label><select id="post-category" value={form.category} onChange={e => change('category', e.target.value)}><option value="tech">개발 · 기술</option><option value="life">일상 · 에세이</option></select>
+        <label htmlFor="post-category">분류</label><select id="post-category" value={form.category} disabled={!categories.length} onChange={e=>changeCategory(e.target.value)}>{categories.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
+        <div className="editor-topics" role="group" aria-label="세부 주제">{topics.filter(t=>t.category===form.category&&t.id!==t.category).map(t=><label key={t.id}><input type="checkbox" checked={selectedTopics.includes(t.id)} onChange={e=>changeTopic(t.id,e.target.checked)}/>{t.name}</label>)}</div>
         <label htmlFor="post-title">제목</label><input className="editor-title" id="post-title" placeholder="이야기의 제목" required maxLength={160} value={form.title} onChange={e => change('title', e.target.value)}/>
         <label htmlFor="post-summary">짧은 소개 <span>선택 · 280자 이내</span></label><textarea id="post-summary" rows={2} maxLength={280} placeholder="이 글은 어떤 이야기인가요?" value={form.summary} onChange={e => change('summary', e.target.value)}/>
         <div className="cover-label"><label htmlFor="post-cover">대표 이미지 <span>선택 · JPG, PNG, WebP · 최대 8MB</span></label>{form.image && <button type="button" className="text-button" onClick={() => { change('image_key', null); change('image', null); }}>이미지 제거</button>}</div>
@@ -49,7 +54,7 @@ export default function Editor({ user, post, onSaved, onDirty }) {
       </fieldset>
     </form>}
     {error && <p className="auth-error" role="alert">{error}</p>}{notice && <p className="workspace-notice" role="status">{notice}</p>}
-    <div className="editor-footer"><span>{uploading ? '이미지 업로드 중…' : pending ? '저장 중…' : dirty ? '저장하지 않은 변경 사항' : record ? '저장됨' : '제목과 본문을 입력해 주세요'}</span><div><button type="button" className="pill" disabled={disabled} onClick={() => save('draft')}>{record?.status === 'published' ? '발행 취소 · 임시저장' : '임시저장'}</button><button type="button" className="pill primary" disabled={disabled} onClick={() => save('published')}>{pending ? '저장 중…' : record?.status === 'published' ? '수정 사항 발행' : '발행하기'}</button></div></div>
+    <div className="editor-footer"><span>{!categories.length?'분류를 불러오는 중…':uploading ? '이미지 업로드 중…' : pending ? '저장 중…' : dirty ? '저장하지 않은 변경 사항' : record ? '저장됨' : '제목과 본문을 입력해 주세요'}</span><div><button type="button" className="pill" disabled={disabled||!categories.length} onClick={() => save('draft')}>{record?.status === 'published' ? '발행 취소 · 임시저장' : '임시저장'}</button><button type="button" className="pill primary" disabled={disabled||!categories.length} onClick={() => save('published')}>{pending ? '저장 중…' : record?.status === 'published' ? '수정 사항 발행' : '발행하기'}</button></div></div>
   </section>;
 }
 

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './http';
 export type Role = 'reader' | 'author' | 'admin';
-export type UserRow = { id: string; email: string; name: string; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number };
+export type UserRow = { id: string; email: string; name: string; bio: string; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number };
 export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
 export const now = () => Math.floor(Date.now() / 1000);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -13,7 +13,7 @@ export function readCookie(request: Request, suffix: string) {
 export function cookie(request: Request, suffix: string, value: string, age: number) {
   return cookieName(request, suffix) + '=' + value + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + age + (local(request) ? '' : '; Secure');
 }
-export function publicUser(user: UserRow) { return { id: user.id, email: user.email, name: user.name, role: user.role }; }
+export function publicUser(user: UserRow) { return { id: user.id, email: user.email, name: user.name, bio: user.bio, role: user.role, version: user.version }; }
 export async function currentUser(request: Request, env: AuthEnv): Promise<UserRow | null> {
   const token = readCookie(request, 'session');
   if (!/^[a-f0-9]{64}$/.test(token)) return null;

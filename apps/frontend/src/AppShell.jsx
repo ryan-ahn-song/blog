@@ -1,5 +1,5 @@
 import { assetUrl } from './assets.js';
-export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,people,children,user,onProfile}) {
+export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,people,popularTopics,catalogLoading,catalogError,children,user,onProfile}) {
 return <div onClick={onAction}>
   <a className="skip" href="#feed">최신 글로 건너뛰기</a>
   <aside className="rail" aria-label="사이드 메뉴">
@@ -20,9 +20,9 @@ return <div onClick={onAction}>
       <div className="content-columns">
         <section id="feed" aria-label="최신 글 피드" aria-live="polite">{children}</section>
         <aside className="right-column">
-          <section className="topics"><h2>인기 관심사</h2><div className="topic-list"><button className={`pill ${category === 'tech' ? 'selected' : ''}`} data-category="tech" aria-pressed={category === 'tech'}>개발 · 기술</button><button className={`pill ${category === 'life' ? 'selected' : ''}`} data-category="life" aria-pressed={category === 'life'}>일상 · 에세이</button></div></section>
-          <section className="people"><div className="aside-heading"><h2>필자</h2><button data-view="writers">모두 보기</button></div><div id="people-list">{people}</div></section>
-          <footer><span>21st ARK</span><button data-view="home">모든 글</button><button data-view="saved">저장한 글</button><p>© 2026 21st ARK</p></footer>
+          <section className="topics"><h2>인기 관심사</h2><div className="topic-list">{catalogLoading?<p className="aside-empty">불러오는 중…</p>:catalogError?<p className="aside-empty">주제를 불러오지 못했습니다.</p>:popularTopics.length?popularTopics.map(t=><button key={t.id} className="pill" data-explore-topic={t.id}>{t.name}<span className="topic-count">{t.post_count}</span></button>):<p className="aside-empty">글이 발행되면 관심사가 표시됩니다.</p>}</div></section>
+          <section className="people"><div className="aside-heading"><h2>필자</h2><button data-view="writers">모두 보기</button></div><div id="people-list">{catalogLoading?<p className="aside-empty">불러오는 중…</p>:catalogError?<p className="aside-empty">필자를 불러오지 못했습니다.</p>:people.length?people:<p className="aside-empty">아직 등록된 필자가 없어요.</p>}</div></section>
+          <footer><span>21st ARK</span><button data-view="home">모든 글</button><button data-view="saved">저장한 글</button><p>© {new Date().getFullYear()} 21st ARK</p></footer>
         </aside>
       </div>
     </div>
