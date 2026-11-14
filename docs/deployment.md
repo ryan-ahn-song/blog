@@ -4,7 +4,7 @@
 
 | 설정 | 프론트엔드 | 백엔드 |
 | --- | --- | --- |
-| Worker 이름 | `blog` | `21st-ark-api` |
+| Worker 이름 | `21st-ark-web` | `21st-ark-api` |
 | 빌드 명령 | `npm run build:frontend` | `npm run build:backend` |
 | 배포 명령 | `npm run deploy:frontend` | `npm run deploy:backend` |
 
@@ -14,14 +14,14 @@
 
 운영 이미지 저장소는 R2 `21st-ark-media`이며 공개 주소는 `https://media.21stark.dev`입니다. 백엔드 바인딩 이름은 `MEDIA`입니다. 운영 화면의 사진·로고는 이 주소에서 읽고, 로컬 개발은 기존 `public/assets`를 사용합니다. 새 이미지를 추가할 때는 같은 파일 이름으로 R2에 업로드한 뒤 콘텐츠에서 참조합니다.
 
-`blog`의 workers.dev 주소는 배포 설정으로 활성화합니다. 백엔드는 프론트의 `API` service binding으로 접근하므로 별도 공개 주소가 없어도 됩니다.
+`21st-ark-web`의 workers.dev 주소는 배포 설정으로 활성화합니다. 백엔드는 프론트의 `API` service binding으로 접근하므로 별도 공개 주소가 없어도 됩니다.
 
-프론트의 운영 도메인은 `https://21stark.dev`와 `https://21st-ark.dev`입니다. 두 주소 모두 `blog` Worker의 Custom Domain으로 연결하고 프론트 `wrangler.jsonc`의 `routes`에 유지합니다. API는 각 도메인의 `/api/*`에서 같은 백엔드로 전달합니다. 이미지는 공통으로 `https://media.21stark.dev`를 사용합니다.
+프론트의 운영 도메인은 `https://21stark.dev`와 `https://21st-ark.dev`입니다. 두 주소 모두 `21st-ark-web` Worker의 Custom Domain으로 연결하고 프론트 `wrangler.jsonc`의 `routes`에 유지합니다. API는 각 도메인의 `/api/*`에서 같은 백엔드로 전달합니다. 이미지는 공통으로 `https://media.21stark.dev`를 사용합니다.
 
 1. Cloudflare D1 데이터베이스 `21st-ark-db`를 생성합니다.
 2. 반환된 실제 UUID를 `apps/backend/wrangler.jsonc`의 `database_id`에 넣습니다. 현재 운영 D1 ID는 반영되어 있습니다. 새 환경을 만들 때는 해당 환경의 UUID로 교체합니다.
 3. `21st-ark-api` Worker를 먼저 배포합니다. `deploy:backend`는 D1 ID가 아직 자리표시자이면 배포를 중단합니다.
-4. 프론트 `blog` Worker를 배포합니다. API service binding 대상인 `21st-ark-api`가 먼저 존재해야 합니다.
+4. 프론트 `21st-ark-web` Worker를 배포합니다. API service binding 대상인 `21st-ark-api`가 먼저 존재해야 합니다.
 
 로컬에서 확인하려면 `npm run dev`를 실행합니다. `npm run check`는 코드 검사, `npm run test:render`는 기존 화면 렌더링 검사입니다. `npm run db:check`는 로컬 D1 연결만 검사하며, 운영 DB를 생성하거나 변경하지 않습니다.
 
