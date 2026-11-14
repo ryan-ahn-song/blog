@@ -1,5 +1,6 @@
 # Local backend secrets belong in .dev.vars (ignored by Git).
 # D1 DB is configured as a Wrangler binding, not a connection string.
 # GOOGLE_CLIENT_ID is public and configured in wrangler.jsonc.
-# Set this locally when implementing Google OAuth; keep the real value out of Git.
+# Copy to .dev.vars and set the secret to enable local Google login.
+# Register http://127.0.0.1:3000/api/auth/callback/google in Google Cloud.
 # GOOGLE_CLIENT_SECRET=
