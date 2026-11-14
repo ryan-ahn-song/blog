@@ -1,4 +1,4 @@
-export interface Env { DB: D1Database }
+export interface Env { DB: D1Database; MEDIA: R2Bucket }
 export default {
   async fetch(request: Request, _env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;

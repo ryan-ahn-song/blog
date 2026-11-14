@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AppShell from './AppShell.jsx';
 import { posts, writers } from './data.js';
 import { exploreTopics } from './topics.js';
+import { assetUrl } from './assets.js';
 
 const label = c => c === 'tech' ? '개발 · 기술' : '일상 · 에세이';
 const paths = {
@@ -33,7 +34,7 @@ function Explore({query,topicId}) {
   const topic = exploreTopics.find(t=>t.id===topicId);
   const matching = posts.filter(p=>(topicId==='all'||topic.postIds.includes(p.id)) && `${p.title} ${p.summary} ${p.body} ${writers[p.author].name} ${writers[p.author].role} ${label(p.category)}`.toLowerCase().includes(query.trim().toLowerCase()));
   const people = writers.map((w,index)=>({...w,index})).filter(w=>matching.some(p=>p.author===w.index));
-  const images = ['assets/code.jpg','assets/workspace.jpg','assets/walk.jpg','assets/code.jpg','assets/coffee.jpg','assets/walk.jpg'];
+  const images = ['code.jpg','workspace.jpg','walk.jpg','code.jpg','coffee.jpg','walk.jpg'].map(assetUrl);
   const update = () => { const el=strip.current; if(el) setEdges({start:el.scrollLeft<2,end:el.scrollLeft+el.clientWidth>=el.scrollWidth-2}); };
   useLayoutEffect(()=>{ update(); const observer=new ResizeObserver(update); if(strip.current) observer.observe(strip.current); return ()=>observer.disconnect(); },[query,topicId]);
   const slide = direction => strip.current?.scrollBy({left:direction*strip.current.clientWidth*.8,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});

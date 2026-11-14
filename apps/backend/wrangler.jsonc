@@ -1,5 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "21st-ark-api", "main": "src/index.ts", "compatibility_date": "2026-11-10",
-  "d1_databases": [{ "binding": "DB", "database_name": "21st-ark-db", "database_id": "38680c4f-047f-4e59-b846-2167b85c067a", "migrations_dir": "migrations" }]
+  "d1_databases": [{ "binding": "DB", "database_name": "21st-ark-db", "database_id": "38680c4f-047f-4e59-b846-2167b85c067a", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "21st-ark-media" }]
 }
