@@ -3,6 +3,7 @@ import AppShell from './AppShell.jsx';
 import { posts, writers } from './data.js';
 import { exploreTopics } from './topics.js';
 import { assetUrl } from './assets.js';
+import AuthDialog from './AuthDialog.jsx';
 
 const label = c => c === 'tech' ? '개발 · 기술' : '일상 · 에세이';
 const paths = {
@@ -48,6 +49,9 @@ function Explore({query,topicId}) {
 }
 
 export default function App() {
+  const [user,setUser]=useState(null),[authOpen,setAuthOpen]=useState(false),[authChecking,setAuthChecking]=useState(true),[authError,setAuthError]=useState(false);
+  async function refreshAuth(){setAuthChecking(true);setAuthError(false);try{const r=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw new Error();const body=await r.json();setUser(body.user);}catch{setAuthError(true);}finally{setAuthChecking(false);}}
+  useEffect(()=>{refreshAuth();},[]);
   const [view,setView]=useState('home');
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('all');
@@ -82,9 +86,10 @@ export default function App() {
   const people=writers.map((w,i)=><button key={i} className="person-row" data-author={i}><Avatar writer={w}/><span><strong>{w.name}</strong><small>{w.role}</small></span></button>);
   const chips=exploreTopics.map(t=><button key={t.id} data-explore-topic={t.id} aria-pressed={t.id===topicId} className={t.id===topicId?'selected':''}>{t.name}</button>);
   return <>
-    <AppShell view={view} title={title} query={query} category={category} onSearch={e=>setQuery(e.target.value)} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} people={people}>
+    <AppShell view={view} title={title} query={query} category={category} onSearch={e=>setQuery(e.target.value)} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} people={people} user={user} onProfile={()=>{setAuthOpen(true);refreshAuth();}}>
       {view==='search'?<Explore query={query} topicId={topicId}/>:view==='writers'?<div className="writer-grid">{writers.map((w,i)=><button key={i} className="writer-card" data-author={i}><Avatar writer={w}/><strong>{w.name}</strong><p>{w.role}</p><small>작성한 글 보기 ↗</small></button>)}</div>:shown.length?shown.map((p,i)=><Post key={p.id} post={p} first={i===0} liked={liked.has(p.id)} saved={saved.has(p.id)}/>):<div className="empty">{view==='saved'?<>아직 저장한 글이 없어요.<br/>글 아래의 책갈피를 눌러 모아 보세요.</>:<>일치하는 글이 없어요.<br/>다른 검색어나 관심사를 선택해 보세요.</>}</div>}
     </AppShell>
+    <AuthDialog open={authOpen} onClose={()=>setAuthOpen(false)} user={user} setUser={setUser} checking={authChecking} connectionError={authError} refresh={refreshAuth}/>
     <dialog className="article-dialog" ref={dialogRef} onClose={()=>setArticle(null)} onClick={e=>{if(e.target===e.currentTarget){const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)setArticle(null);}}}><button className="dialog-close pill" aria-label="닫기" onClick={()=>setArticle(null)}>닫기 ×</button><div className="article-content">{article==='settings'?<><h2>화면 설정</h2><p>21st ARK는 다크 모드로 표시됩니다.</p><p className="sample-note">현재 필자와 글은 화면 확인을 위한 예시입니다. 저장한 글과 좋아요는 이 브라우저에 보관됩니다.</p></>:article?<><p className="article-meta">{writers[article.author].name} · {label(article.category)} · {article.date}</p><h2>{article.title}</h2><p>{article.body}</p><p className="sample-note">화면 확인을 위한 예시 글입니다.</p></>:null}</div></dialog>
     <div className="toast" role="status" hidden={!message}>{message}</div>
   </>;

@@ -7,5 +7,8 @@ if (config.d1_databases.some(db => db.database_id === '00000000-0000-0000-0000-0
 }
 const cli = new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url);
 const { fileURLToPath } = await import('node:url');
-const result = spawnSync(process.execPath, [fileURLToPath(cli), 'deploy'], { stdio: 'inherit', cwd: fileURLToPath(new URL('../apps/backend', import.meta.url)) });
+const cwd = fileURLToPath(new URL('../apps/backend', import.meta.url));
+const migration = spawnSync(process.execPath, [fileURLToPath(cli), 'd1', 'migrations', 'apply', 'DB', '--remote'], { stdio: 'inherit', cwd });
+if (migration.status !== 0) process.exit(migration.status ?? 1);
+const result = spawnSync(process.execPath, [fileURLToPath(cli), 'deploy'], { stdio: 'inherit', cwd });
 process.exit(result.status ?? 1);

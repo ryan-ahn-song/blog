@@ -1,5 +1,8 @@
 {
-  "name": "@21st-ark/backend", "version": "0.1.0", "private": true, "type": "module",
+  "name": "@21st-ark/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
     "build": "wrangler deploy --dry-run --outdir dist",
@@ -8,5 +11,10 @@
     "db:check": "wrangler d1 execute DB --local --command \"SELECT 1 AS connected\"",
     "db:migrate:local": "wrangler d1 migrations apply DB --local"
   },
-  "devDependencies": { "wrangler": "^4.45.0", "typescript": "^5.9.3", "@cloudflare/workers-types": "^4" }
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.45.0"
+  }
 }

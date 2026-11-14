@@ -14,8 +14,10 @@
     "build:backend": "npm run build -w @21st-ark/backend",
     "check": "npm run check --workspaces",
     "test:render": "node scripts/check-render.mjs",
+    "test:auth": "npm run build:backend && node --experimental-strip-types scripts/test-auth.mjs",
     "db:check": "npm run db:check -w @21st-ark/backend",
     "db:migrate:local": "npm run db:migrate:local -w @21st-ark/backend",
+    "auth:create-user": "node --experimental-strip-types scripts/create-user.mjs",
     "deploy:frontend": "npm run deploy -w @21st-ark/frontend",
     "deploy:backend": "npm run deploy -w @21st-ark/backend"
   },

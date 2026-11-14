@@ -1,5 +1,5 @@
 import { assetUrl } from './assets.js';
-export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,people,children}) {
+export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,people,children,user,onProfile}) {
 return <div onClick={onAction}>
   <a className="skip" href="#feed">최신 글로 건너뛰기</a>
   <aside className="rail" aria-label="사이드 메뉴">
@@ -11,6 +11,7 @@ return <div onClick={onAction}>
       <button className={`rail-button ${view === 'saved' ? 'active' : ''}`} data-view="saved" aria-current={view === 'saved' ? 'page' : undefined} aria-label="저장한 글" title="저장한 글"><svg viewBox="0 0 24 24"><path d="M6 3h12v19l-6-4-6 4Z"/></svg></button>
     </nav>
     <button className="rail-button rail-bottom" data-view="settings" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+    <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={onProfile} aria-label={user?'내 프로필':'로그인'} title={user?user.name:'로그인'}>{user?<span>{user.name[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
   </aside>
   <main className={`surface ${view === "search" ? "exploring" : ""}`} id="main" ref={surfaceRef}>
     <div className="layout">
