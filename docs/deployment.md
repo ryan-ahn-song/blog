@@ -13,7 +13,7 @@
 ## 최초 배포 순서
 
 1. Cloudflare D1 데이터베이스 `21st-ark-db`를 생성합니다.
-2. 반환된 실제 UUID를 `apps/backend/wrangler.jsonc`의 `database_id`에 넣습니다. 현재 0으로 된 UUID는 로컬 개발용 자리표시자입니다.
+2. 반환된 실제 UUID를 `apps/backend/wrangler.jsonc`의 `database_id`에 넣습니다. 현재 운영 D1 ID는 반영되어 있습니다. 새 환경을 만들 때는 해당 환경의 UUID로 교체합니다.
 3. `21st-ark-api` Worker를 먼저 배포합니다. `deploy:backend`는 D1 ID가 아직 자리표시자이면 배포를 중단합니다.
 4. 프론트 `blog` Worker를 배포합니다. API service binding 대상인 `21st-ark-api`가 먼저 존재해야 합니다.
 
