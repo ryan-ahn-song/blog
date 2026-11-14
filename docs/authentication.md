@@ -28,3 +28,11 @@ npm run auth:create-user -- --remote --admin
 `npm run test:auth`는 실제 workerd와 격리된 임시 D1으로 인증 흐름을 검사합니다. 운영 데이터나 기존 로컬 D1을 수정하지 않습니다.
 
 API: `GET /api/auth/me`, `POST /api/auth/login`, `POST /api/auth/logout`. 응답은 캐시하지 않습니다. 실제 글 작성 API는 후속 작업에서 세션과 역할을 검사하도록 연결해야 합니다.
+
+## Google 로그인 준비
+
+Google OAuth 클라이언트 ID는 백엔드 `wrangler.jsonc`의 `vars.GOOGLE_CLIENT_ID`에 설정합니다. 이 값은 공개 식별자이며 로컬 Wrangler 실행과 운영 배포에 함께 적용됩니다. 프론트엔드는 백엔드를 통해 인증할 예정이므로 별도 클라이언트 ID 환경 변수를 두지 않습니다.
+
+Google 로그인 경로와 UI는 아직 구현하지 않았습니다. 구현 시 운영 콜백은 `https://21stark.dev/api/auth/callback/google`, 로컬 콜백은 `http://127.0.0.1:3000/api/auth/callback/google`을 사용하도록 맞춥니다.
+
+클라이언트 보안 비밀번호는 `GOOGLE_CLIENT_SECRET`이라는 이름으로 운영 Cloudflare Worker `21st-ark-api`의 Secret에 저장하고, 로컬에서는 Git에서 제외되는 `apps/backend/.dev.vars`에 저장합니다. 보안 비밀번호는 현재 미설정이며 저장소에 커밋하지 않습니다.
