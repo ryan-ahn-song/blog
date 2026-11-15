@@ -21,5 +21,14 @@ try {
   assert.ok(card.includes('DB 작성자'));assert.ok(card.includes('D1에서 가져온 글'));assert.ok(card.includes('>42<'));assert.ok(card.includes('aria-pressed="true"'));assert.ok(!card.includes('code-art'));
   const people=renderToString(createElement(WriterList,{writers:[{id:'writer-id',name:'DB 작성자',bio:'저장된 소개',post_count:3}]}));
   assert.ok(people.includes('저장된 소개'));assert.ok(people.replace(/<!--.*?-->/g,'').includes('발행한 글 3개'));
+  const {default:AppShell}=await vite.ssrLoadModule('/src/AppShell.jsx');
+  for(const role of [null,'reader','author','admin']){
+    const shell=renderToString(createElement(AppShell,{view:'home',title:'홈',query:'',onSearch:()=>{},category:'all',people:[],popularTopics:[],user:role?{name:'메뉴 확인',role}:null}));
+    const nav=shell.match(/<nav[^>]*>([\s\S]*?)<\/nav>/)[1];
+    assert.equal(nav.includes('data-view="profile"'),Boolean(role));
+    assert.equal(nav.includes('rail-divider'),Boolean(role));
+    for(const view of ['write','my-posts'])assert.equal(nav.includes('data-view="'+view+'"'),['author','admin'].includes(role));
+    if(role)assert.ok(nav.indexOf('data-view="saved"')<nav.indexOf('rail-divider'));
+  }
   console.log('React render passed: no sample fallback, loading state, database article/author fields, real like counts and saved state.');
 } finally { await vite.close(); }

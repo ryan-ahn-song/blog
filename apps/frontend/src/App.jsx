@@ -3,8 +3,9 @@ import AppShell from './AppShell';
 import AuthDialog from './AuthDialog';
 import Editor, { MyPosts } from './Editor';
 import AdminPanel from './AdminPanel';
+import ProfileForm from './ProfileForm';
 import { Avatar, PostCard, WriterList, EmptyState, Explore, topicName, postDate } from './ContentViews';
-import { api, jsonRequest } from './api';
+import { api, jsonRequest, roleName } from './api';
 
 const oauthErrors = { state: '로그인 요청이 만료되었습니다. 다시 시작해 주세요.', cancelled: 'Google 로그인을 취소했습니다.', google: 'Google 로그인에 실패했습니다. 다시 시도해 주세요.', existing: '기존 이메일 계정으로 로그인한 후, 프로필에서 Google 계정을 연결해 주세요.', link: '현재 계정과 이메일이 같은 Google 계정을 선택해 주세요.', disabled: '이용이 중지된 계정입니다. 관리자에게 문의해 주세요.' };
 const emptyFeed = { key: '', posts: [], total: 0, page: 0, loading: true, error: '' };
@@ -28,7 +29,7 @@ export default function App() {
   const criteria = JSON.stringify({ bookmarked: view === 'saved' ? '1' : undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined });
   const feedKey = criteria + ':' + (user?.id ?? 'anonymous');
   const currentFeed = feed.key === feedKey ? feed : { ...emptyFeed, key: feedKey };
-  const title = author ? author.name + '의 글' : category !== 'all' ? topicName(topics, category) : { home: '홈', search: '검색', writers: '필자', saved: '저장한 글', write: '글 쓰기', 'my-posts': '나의 글', admin: '멤버 관리' }[view];
+  const title = author ? author.name + '의 글' : category !== 'all' ? topicName(topics, category) : { home: '홈', search: '검색', writers: '필자', saved: '저장한 글', write: '글 쓰기', 'my-posts': '내 글 관리', admin: '멤버 관리',profile:'프로필 관리' }[view];
   const refreshContent = () => { setRequestPage(0); setVersion(v => v + 1); };
 
   function signedIn(account) {
@@ -79,6 +80,7 @@ export default function App() {
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 3000); return () => clearTimeout(timer); }, [message]);
   useEffect(() => {
     setArticle(null);
+    if(!user&&view==='profile')setView('home');
     if ((!user || user.role === 'reader') && ['write', 'my-posts', 'admin'].includes(view)) setView('home');
     else if (user?.role !== 'admin' && view === 'admin') setView('home');
   }, [user?.id, user?.role]);
@@ -92,6 +94,7 @@ export default function App() {
   function navigate(next) {
     if (dirty && !window.confirm('저장하지 않은 변경 사항이 있습니다. 이동할까요?')) return false;
     if (['write', 'my-posts'].includes(next) && !canWrite) { setAuthOpen(true); return false; }
+    if(next==='profile'&&!user){setAuthOpen(true);return false;}
     if (next === 'admin' && user?.role !== 'admin') return false;
     if (next === 'write') setEditing(null);
     setDirty(false); setView(next); setCategory('all'); setAuthor(null); setQuery(''); setTopicId('all'); setRequestPage(0);
@@ -148,6 +151,7 @@ export default function App() {
   if (view === 'write' && canWrite) content = <Editor key={user.id + ':' + (editing?.id || 'new')} user={user} post={editing} topics={topics} onSaved={savedPost} onDirty={markDirty}/>;
   else if (view === 'my-posts' && canWrite) content = <MyPosts onEdit={editPost} onNew={() => navigate('write')} refreshKey={version}/>;
   else if (view === 'admin' && user?.role === 'admin') content = <AdminPanel user={user} onChanged={refreshContent}/>;
+  else if(view==='profile'&&user)content=<section className="profile-page"><div className="workspace-intro"><div><p className="eyebrow">PROFILE</p><h2>내 프로필</h2><p>필자 목록과 글에 표시될 이름과 소개를 관리하세요.</p></div></div><div className="profile-identity"><Avatar writer={user}/><div><strong>{user.name}</strong><p>{user.email}</p></div><span className="status-tag">{roleName(user.role)}</span></div><ProfileForm expanded user={user} onSaved={account=>{setUser(account);refreshContent();}}/></section>;
   else if (view === 'writers') content = catalogLoading ? <p role="status">필자를 불러오고 있어요.</p> : catalogError ? null : writers.length ? <><WriterList writers={writers}/>{writers.length < writerTotal && <button className="pill load-more" onClick={moreWriters}>필자 더 보기</button>}</> : <EmptyState title="아직 등록된 필자가 없어요."/>;
   else if (view === 'saved' && !user) content = authChecking ? <p role="status">로그인 상태를 확인하고 있어요.</p> : <EmptyState title="저장한 글을 계정에서 모아 보세요." action="로그인" onAction={() => setAuthOpen(true)}>로그인하면 다른 기기에서도 이어서 볼 수 있어요.</EmptyState>;
   else if (view === 'search') content = <Explore topics={topics} writers={searchWriters.writers} writersLoading={searchWriters.loading} writersError={searchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error}/>;
