@@ -1,9 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api, jsonRequest } from './api';
-export default function ProfileForm({ user, onSaved, expanded=false }) {
+export default function ProfileForm({ user, onSaved, expanded=false, onBusy }) {
+  const id=useId();
   const [name,setName]=useState(user.name),[bio,setBio]=useState(user.bio??''),[pending,setPending]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
-  useEffect(()=>{setName(user.name);setBio(user.bio??'');},[user.id,user.version]);
-  async function submit(event){event.preventDefault();setPending(true);setError('');setNotice('');try{const result=await api('/api/auth/profile',jsonRequest('PATCH',{name,bio,version:user.version}));onSaved(result.user);setNotice('프로필을 저장했습니다.');}catch(e){setError(e.message);}finally{setPending(false);}}
-  const form=<form onSubmit={submit}><label htmlFor={expanded?'account-name':'profile-name'}>표시 이름</label><input id={expanded?'account-name':'profile-name'} required maxLength={80} value={name} onChange={e=>setName(e.target.value)} disabled={pending}/><label htmlFor={expanded?'account-bio':'profile-bio'}>소개 <span>선택 · 160자</span></label><textarea id={expanded?'account-bio':'profile-bio'} rows={3} maxLength={160} value={bio} onChange={e=>setBio(e.target.value)} disabled={pending}/>{error&&<p className="auth-error" role="alert">{error}</p>}{notice&&<p className="workspace-notice" role="status">{notice}</p>}<button className="pill auth-submit" disabled={pending}>{pending?'저장 중…':'프로필 저장'}</button></form>;
+  const [images,setImages]=useState({avatar_key:user.avatar_key,cover_key:user.cover_key,avatar_url:user.avatar_url,cover_url:user.cover_url});
+  useEffect(()=>{setName(user.name);setBio(user.bio??'');setImages({avatar_key:user.avatar_key,cover_key:user.cover_key,avatar_url:user.avatar_url,cover_url:user.cover_url});},[user.id,user.version]);
+  function busy(value){setPending(value);onBusy?.(value);}
+  async function upload(event,purpose){
+    const file=event.target.files?.[0];event.target.value='';if(!file)return;
+    setError('');setNotice('');
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){setError('JPG, PNG, WebP 이미지를 8MB 이하로 선택해 주세요.');return;}
+    busy(true);
+    try{const result=await api('/api/media?purpose='+purpose,{method:'POST',headers:{'Content-Type':file.type},body:file});setImages(previous=>({...previous,[purpose+'_key']:result.key,[purpose+'_url']:result.url}));}
+    catch(e){setError(e.message);}finally{busy(false);}
+  }
+  async function submit(event){event.preventDefault();busy(true);setError('');setNotice('');try{const result=await api('/api/auth/profile',jsonRequest('PATCH',{name,bio,version:user.version,avatar_key:images.avatar_key,cover_key:images.cover_key}));onSaved(result.user);setNotice('프로필을 저장했습니다.');}catch(e){setError(e.message);}finally{busy(false);}}
+  const form=<form onSubmit={submit}><fieldset disabled={pending}>
+    <div className="profile-media-fields">{['cover','avatar'].map(purpose=><div className={'profile-upload '+purpose} key={purpose}>
+      <div className="profile-upload-preview">{images[purpose+'_url']?<img src={images[purpose+'_url']} alt={purpose==='avatar'?'프로필 사진 미리보기':'커버 미리보기'}/>:<span>{purpose==='avatar'?Array.from(name||' ')[0]:'커버 이미지'}</span>}</div>
+      <label className="pill" htmlFor={id+purpose}>{purpose==='avatar'?'프로필 사진 변경':'커버 변경'}<input className="sr-only" id={id+purpose} type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>upload(e,purpose)}/></label>
+      {images[purpose+'_key']&&<button type="button" className="text-button" onClick={()=>setImages(previous=>({...previous,[purpose+'_key']:null,[purpose+'_url']:null}))}>삭제</button>}
+    </div>)}</div><p className="profile-upload-note">JPG, PNG, WebP · 최대 8MB · 커버는 가로로 긴 이미지를 권장해요.</p>
+    <label htmlFor={id+'name'}>표시 이름</label><input id={id+'name'} required maxLength={80} value={name} onChange={e=>setName(e.target.value)}/><label htmlFor={id+'bio'}>소개 <span>선택 · 160자</span></label><textarea id={id+'bio'} rows={3} maxLength={160} value={bio} onChange={e=>setBio(e.target.value)}/>
+    {error&&<p className="auth-error" role="alert">{error}</p>}{notice&&<p className="workspace-notice" role="status">{notice}</p>}<button className="pill primary auth-submit" disabled={pending}>{pending?'처리 중…':'프로필 저장'}</button></fieldset></form>;
   return expanded?<section className="profile-edit profile-edit-page" aria-label="프로필 수정">{form}</section>:<details className="profile-edit"><summary>프로필 수정</summary>{form}</details>;
 }

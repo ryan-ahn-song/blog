@@ -1,12 +1,55 @@
+# Dependencies, generated builds and caches
 node_modules/
 dist/
-.wrangler/
+coverage/
+.vite/
+.cache/
+.turbo/
+
+# Local environment and credentials; examples contain placeholders only
 .env
 .env.*
 !.env.example
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+.envrc
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+credentials.json
+credentials-*.json
+service-account*.json
+client_secret*.json
+secrets.json
+secrets/
+
+# Wrangler includes local D1/R2 data and authentication/session state
+.wrangler/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.dump
+backups/
+dumps/
+
+# Logs, network captures and browser test artifacts
+*.log
+*.har
+playwright-report/
+test-results/
+
+# Machine/editor metadata
 *.tsbuildinfo
 .DS_Store
-*.log
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo

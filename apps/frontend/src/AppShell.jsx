@@ -1,5 +1,6 @@
 import { assetUrl } from './assets.js';
-export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,people,popularTopics,catalogLoading,catalogError,children,user,onProfile}) {
+import CommunitySidebar from './CommunitySidebar';
+export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,children,user,onProfile,sidebarRefresh,onLogin}) {
 return <div onClick={onAction}>
   <a className="skip" href="#feed">최신 글로 건너뛰기</a>
   <aside className="rail" aria-label="사이드 메뉴">
@@ -9,31 +10,26 @@ return <div onClick={onAction}>
       <button className={`rail-button ${view === 'search' ? 'active' : ''}`} data-view="search" aria-current={view === 'search' ? 'page' : undefined} aria-label="검색" title="검색"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg></button>
       <button className={`rail-button ${view === 'writers' ? 'active' : ''}`} data-view="writers" aria-current={view === 'writers' ? 'page' : undefined} aria-label="필자" title="필자"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 22v-3a7 7 0 0 1 14 0v3M17 4a4 4 0 0 1 0 8m2 3a6 6 0 0 1 3 5v2"/></svg></button>
       <button className={`rail-button ${view === 'saved' ? 'active' : ''}`} data-view="saved" aria-current={view === 'saved' ? 'page' : undefined} aria-label="저장한 글" title="저장한 글"><svg viewBox="0 0 24 24"><path d="M6 3h12v19l-6-4-6 4Z"/></svg></button>
-      {user&&<>
+      {user&&['author','admin'].includes(user.role)&&<>
         <hr className="rail-divider"/>
         <div className="rail-account-nav" role="group" aria-label="개인 메뉴">
           {['author','admin'].includes(user.role)&&<>
             <button className={`rail-button ${view==='write'?'active':''}`} data-view="write" aria-current={view==='write'?'page':undefined} aria-label="글쓰기" title="글쓰기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 4 5 5M4 20l4.5-1 12-12a2.1 2.1 0 0 0-3-3l-12 12L4 20Z"/></svg></button>
             <button className={`rail-button ${view==='my-posts'?'active':''}`} data-view="my-posts" aria-current={view==='my-posts'?'page':undefined} aria-label="내 글 관리" title="내 글 관리"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h10a2 2 0 0 1 2 2v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM3 7v13a2 2 0 0 0 2 2h12M10 8h6m-6 4h6m-6 4h4"/></svg></button>
           </>}
-          <button className={`rail-button ${view==='profile'?'active':''}`} data-view="profile" aria-current={view==='profile'?'page':undefined} aria-label="프로필 관리" title="프로필 관리"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2M16 17l2 2 4-4"/></svg></button>
         </div>
       </>}
     </nav>
     <button className="rail-button rail-bottom" data-view="settings" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
-    <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={onProfile} aria-label={user?'내 프로필':'로그인'} title={user?user.name:'로그인'}>{user?<span>{user.name[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
+    <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={onProfile} aria-label={user?'내 프로필':'로그인'} title={user?user.name:'로그인'}>{user?<span>{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
   </aside>
-  <main className={`surface ${view === "search" ? "exploring" : ""} ${['write','my-posts','admin','profile'].includes(view) ? 'workspace' : ''}`} id="main" ref={surfaceRef}>
+  <main className={`surface ${view === "search" ? "exploring" : ""} ${['write','my-posts','admin'].includes(view) ? 'workspace' : ''} ${view === 'author' ? 'author-view' : ''} ${view === 'write' ? 'writing-workspace' : ''}`} id="main" ref={surfaceRef}>
     <div className="layout">
-      <header className="page-header"><h1 id="page-title">{title}</h1><div className="top-actions"><button className="pill" data-view="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg>글 검색</button>{user && ['author','admin'].includes(user.role) && <button className="pill" data-view="my-posts">나의 글</button>}{user?.role==='admin' && <button className="pill" data-view="admin">멤버 관리</button>}<button className="pill primary" data-view={user && ['author','admin'].includes(user.role)?'write':'home'}>{user && ['author','admin'].includes(user.role)?'글 쓰기':'모든 글'}</button></div></header>
+      <header className="page-header"><h1 id="page-title">{title}</h1><div className="top-actions"><button className="pill" data-view="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg>글 검색</button>{user && ['author','admin'].includes(user.role) && <button className="pill" data-view="my-posts">나의 글</button>}{user&&['author','admin'].includes(user.role)&&<button className="pill primary" data-view="write">글 쓰기</button>}</div></header>
       <section className="search-panel" hidden={view !== "search"} aria-label="검색 및 주제 탐색"><div className="explore-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><label className="sr-only" htmlFor="search">필자 또는 주제 검색</label><input type="search" id="search" placeholder="필자 또는 주제 검색" autoComplete="off" value={query} onChange={onSearch} ref={searchRef}/><button id="clear-search" aria-label="검색어 지우기" hidden={!query}>×</button></div><div className="explore-chips" role="group" aria-label="주제 선택">{chips}</div></section>
       <div className="content-columns">
         <section id="feed" aria-label="최신 글 피드" aria-live="polite">{children}</section>
-        <aside className="right-column">
-          <section className="topics"><h2>인기 관심사</h2><div className="topic-list">{catalogLoading?<p className="aside-empty">불러오는 중…</p>:catalogError?<p className="aside-empty">주제를 불러오지 못했습니다.</p>:popularTopics.length?popularTopics.map(t=><button key={t.id} className="pill" data-explore-topic={t.id}>{t.name}<span className="topic-count">{t.post_count}</span></button>):<p className="aside-empty">글이 발행되면 관심사가 표시됩니다.</p>}</div></section>
-          <section className="people"><div className="aside-heading"><h2>필자</h2><button data-view="writers">모두 보기</button></div><div id="people-list">{catalogLoading?<p className="aside-empty">불러오는 중…</p>:catalogError?<p className="aside-empty">필자를 불러오지 못했습니다.</p>:people.length?people:<p className="aside-empty">아직 등록된 필자가 없어요.</p>}</div></section>
-          <footer><span>21st ARK</span><button data-view="home">모든 글</button><button data-view="saved">저장한 글</button><p>© {new Date().getFullYear()} 21st ARK</p></footer>
-        </aside>
+        <CommunitySidebar user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>
       </div>
     </div>
   </main>

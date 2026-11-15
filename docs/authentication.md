@@ -74,3 +74,39 @@ Google Cloud의 해당 웹 OAuth 클라이언트에 아래 주소들을 등록�
 `npm run test:features`는 실제 workerd·D1·R2와 가짜 Google 제공자를 사용해 서명된 JWT, PKCE, 상태 재사용, 계정 연결, 권한과 글 작성 흐름을 통합 검사합니다. 실제 Google 계정 로그인은 운영 시크릿 및 콜백 등록 후 브라우저에서 별도로 확인합니다.
 
 참고: [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect), [jose JWT 검증](https://github.com/panva/jose).
+
+
+## Writer profiles
+
+`GET /api/writers/:id` returns public display name, bio, avatar/cover URLs and the number of published posts. It never returns email, roles, password hashes or session information. Active writers are public; readers without published posts can view their own profile only. Suspended accounts are hidden. Published posts are loaded through `GET /api/posts?author=:id`; drafts stay in the existing private editor flow.
+
+Profile pages use `/#writer-:id` links. Writer names and avatars, writer cards and the signed-in sidebar avatar open these pages. The standalone profile-management sidebar shortcut has been removed. The owner can edit the page; account settings and logout remain accessible through the page's account button.
+
+Migration `0004_writer_profiles.sql` adds nullable `avatar_key` and `cover_key` fields. Image uploads use `POST /api/media?purpose=avatar|cover` and are stored under `profiles/{userId}/{purpose}-{uuid}.{ext}` in R2. Readers may upload profile images without gaining post-writing permissions. The existing MIME/signature checks, 8 MB size limit, CSRF protection and upload rate limit apply. `PATCH /api/auth/profile` checks image ownership, image purpose, object existence and profile version before saving. Removing an image clears its profile reference. Local development uses the local D1/R2 stores and `/api/media/` URLs.
+
+
+## Block documents
+
+Migration `0005_block_documents.sql` adds `posts.body_format` (`plain` or `markdown`) and nullable `posts.body_doc` (BlockNote JSON). Existing posts remain `plain`. The block editor stores Markdown in `body` for search and export, together with the full JSON document for lossless editing and reading. Both fields are saved in the same D1 insert/update and share the existing revision guard and author/admin ownership rules. The API bounds document size, nesting and node counts, checks supported block/inline types and rejects unsafe link/image protocols and duplicate block IDs. Plain-text clients may continue to omit the new fields.
+
+The editor loads on demand, with article settings on the left and the document canvas on the right. Supported blocks include paragraphs, headings, lists, checklists, toggles, quotes, code, dividers, tables and images. BlockNote provides the slash menu, block dragging, selection formatting, Markdown input rules and undo/redo. Markdown source editing and `.md` import/export are also available. Editing Markdown source reparses the document; untouched source/preview switches preserve the original block structure. Inline images use the same authenticated R2 upload endpoint and limits as cover images. The reader renders the stored block document as read-only; older text posts retain their original text layout.
+
+References: [BlockNote React](https://www.blocknotejs.org/docs/react/overview), [durable document formats](https://www.blocknotejs.org/docs/foundations/supported-formats).
+
+
+## Inline image uploads
+
+The document toolbar's image button supports multiple files (up to ten per selection), and BlockNote's image blocks also support file drop/paste. Uploads go through authenticated `POST /api/media` to the R2 binding; no storage credentials are sent to the browser. JPG/PNG/WebP files are limited to 8 MB each and checked for MIME type, signature, CSRF and author/admin permissions. The editor queues uploads so a batch does not create many simultaneous Worker buffers. Saving is disabled until queued uploads finish.
+
+The upload response includes `key`, display `url` and the stable `source` path `/api/media/posts/{userId}/{uuid}.{ext}`. Inline blocks and their Markdown reference the stable path, preserving image references across local development, aliases and media-domain changes. Managed image URLs are normalized to that path on save; the API checks ownership, object existence and a maximum of fifty managed images per document. Captions, ordering and image dimensions remain in the block JSON. Markdown downloads expand image paths to absolute site URLs.
+
+Local media requests serve the uploaded bytes from local R2. In production the same stable endpoint verifies the object and redirects to the configured `MEDIA_BASE_URL` (currently `https://media.21stark.dev`), allowing R2's custom-domain cache to serve the binary. The redirect is cacheable for one hour; object keys are unique and the objects retain immutable cache metadata. This is a public-image model: knowledge of an image URL permits access even if the containing post is a draft. Deleting a block only removes its document reference; physical R2 deletion is deferred so undo and other references remain valid. Automatic unreferenced-object cleanup is not yet implemented.
+
+
+## Writer subscriptions and trending
+
+Migration `0006_writer_subscriptions.sql` stores subscriber/writer pairs with unique constraints, foreign-key cleanup and a self-subscription check. Any active signed-in account can subscribe or unsubscribe through `PUT /api/writers/:id/subscription` with `{active: boolean}`. Writes validate the request origin and target, enforce a per-account rate limit and are idempotent. Disabled/private unpublished-reader targets cannot be newly subscribed.
+
+`GET /api/subscriptions` is private to the session user and returns public writer details plus each subscribed writer's latest published post. It excludes suspended writers and never returns email or account roles. `GET /api/posts?subscribed=1` returns the existing paginated post feed restricted to the current user's subscriptions; drafts remain private. The right sidebar shows up to six subscribed writers, ordered by latest publication, and links to the full subscription feed. Subscribe controls live on other writers' profile pages.
+
+`GET /api/trending` ranks topics by published-post count over the past seven days, then by latest publication and catalog order. Drafts, older posts and suspended writers do not contribute. The page header now keeps search, the current writer's posts and writing actions; member management remains available through the existing account/admin flow. The old sidebar author directory and footer links/copyright block have been removed.
