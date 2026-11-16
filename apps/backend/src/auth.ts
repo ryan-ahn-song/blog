@@ -1,4 +1,5 @@
 import { handleAccount } from './account';
+import { displayName } from './names';
 import { legal } from './legal';
 import { pendingSignup, handleSignup } from './signup';
 import { json, readBody, HttpError } from './http';
@@ -25,6 +26,7 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
     const actor = await requireUser(request,env);
     const body = await readBody(request);
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length>80 || typeof body.bio !== 'string' || body.bio.length>160 || typeof body.version !== 'number' || !Number.isSafeInteger(body.version)) throw new HttpError(400,'이름(80자)과 소개(160자)를 확인해 주세요.');
+    const name=displayName(body.name);
     const images:{avatar_key:string|null;cover_key:string|null}={avatar_key:actor.avatar_key,cover_key:actor.cover_key};
     for(const field of ['avatar_key','cover_key'] as const){
       if(body[field]===undefined)continue;
@@ -35,7 +37,7 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
       if(!await env.MEDIA.head(key))throw new HttpError(400,'프로필 이미지가 존재하지 않습니다.');
       images[field]=key;
     }
-    const user = await env.DB.prepare('UPDATE auth_users SET name=?,bio=?,avatar_key=?,cover_key=?,version=version+1 WHERE id=? AND version=? RETURNING *').bind(body.name.trim(),body.bio.trim(),images.avatar_key,images.cover_key,actor.id,body.version).first<UserRow>();
+    const user = await env.DB.prepare('UPDATE auth_users SET name=?,bio=?,avatar_key=?,cover_key=?,version=version+1 WHERE id=? AND version=? RETURNING *').bind(name,body.bio.trim(),images.avatar_key,images.cover_key,actor.id,body.version).first<UserRow>();
     if (!user) throw new HttpError(409,'프로필이나 권한이 변경되었습니다. 프로필을 다시 열어 주세요.');
     return json({user:publicUser(user,request,env)});
   }

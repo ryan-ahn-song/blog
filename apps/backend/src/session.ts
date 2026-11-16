@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { HttpError } from './http';
 import { mediaUrl } from './media';
 export type Role = 'reader' | 'author' | 'admin';
@@ -18,7 +18,16 @@ export function publicUser(user: UserRow, request:Request, env:{MEDIA_BASE_URL?:
 export async function currentUser(request: Request, env: AuthEnv): Promise<UserRow | null> {
   const token = readCookie(request, 'session');
   if (!/^[a-f0-9]{64}$/.test(token)) return null;
-  return env.DB.prepare('SELECT u.* FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0').bind(digest(token), now()).first<UserRow>();
+  const time=now(),hash=digest(token);
+  const seen="CASE WHEN s.last_seen=0 THEN s.created_at ELSE s.last_seen END";
+  const user=await env.DB.prepare('SELECT u.*, '+seen+' AS session_seen FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND s.login_version=u.login_version AND '+seen+'>?-CASE u.role WHEN \'admin\' THEN 1800 WHEN \'author\' THEN 3600 ELSE 14400 END AND s.created_at>?-CASE u.role WHEN \'admin\' THEN 28800 WHEN \'author\' THEN 86400 ELSE 604800 END').bind(hash,time,time,time).first<UserRow&{session_seen:number}>();
+  if(!user)return null;
+  // Throttle activity writes to once per five minutes, rather than every API request.
+  if(time-user.session_seen>=300){
+    const updated=await env.DB.prepare('UPDATE auth_sessions SET last_seen=? WHERE token_hash=? AND login_version=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND login_version=?) RETURNING user_id').bind(time,hash,user.login_version,user.id,user.login_version).first();
+    if(!updated)return null;
+  }
+  const {session_seen,...account}=user;return account;
 }
 export async function requireUser(request: Request, env: AuthEnv, roles: Role[] = ['reader', 'author', 'admin']) {
   const user = await currentUser(request, env);
@@ -35,7 +44,7 @@ export async function createSession(request: Request, env: AuthEnv, userId: stri
   const result=await env.DB.batch([
     env.DB.prepare('DELETE FROM auth_pending_signups WHERE token_hash=?').bind(digest(readCookie(request, 'signup'))),
     env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at<=? OR (token_hash=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?)))').bind(now(),digest(readCookie(request,'session')),userId,loginVersion??null,loginVersion??null),
-    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) SELECT ?,id,? FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?) RETURNING user_id').bind(digest(token),now()+604800,userId,loginVersion??null,loginVersion??null),
+    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,login_version,authenticated_at,last_seen) SELECT ?,id,?,login_version,unixepoch(),unixepoch() FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?) RETURNING user_id').bind(digest(token),now()+604800,userId,loginVersion??null,loginVersion??null),
   ]);
   if(!result[2].results.length)throw new HttpError(401,'로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
   return cookie(request, 'session', token, 604800);
@@ -44,4 +53,21 @@ export async function limited(db: D1Database, key: string, max: number) {
   const time = now();
   const row = await db.prepare('INSERT INTO auth_login_limits(key,attempts,expires_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN expires_at<=? THEN 1 ELSE attempts+1 END, expires_at=CASE WHEN expires_at<=? THEN ? ELSE expires_at END RETURNING attempts').bind(key, time + 900, time, time, time + 900).first<{ attempts: number }>();
   return !row || row.attempts > max;
+}
+
+// Sensitive changes require a recent OAuth exchange on this exact session, consumed once.
+export async function requireRecentAuth(request:Request,env:AuthEnv,user:UserRow){
+  const proof=await env.DB.prepare('UPDATE auth_sessions SET authenticated_at=0 WHERE token_hash=? AND user_id=? AND expires_at>? AND login_version=? AND authenticated_at>=? AND authenticated_at<=? RETURNING user_id').bind(digest(readCookie(request,'session')),user.id,now(),user.login_version,now()-300,now()).first();
+  if(!proof)throw new HttpError(428,'계정 보호를 위해 연결된 계정으로 다시 인증해 주세요. 인증 후 5분 안에 한 번 진행할 수 있습니다.');
+}
+
+// Linking a new identity is a security change: invalidate every older session atomically.
+export async function linkIdentity(env:AuthEnv,user:UserRow,provider:'google'|'github',subject:string){
+  const table=provider==='google'?'auth_google_accounts':'auth_github_accounts',token=randomUUID();
+  const result=await env.DB.batch([
+    env.DB.prepare(`UPDATE auth_users SET login_version=login_version+1,account_change_token=? WHERE id=? AND login_version=? AND disabled=0 AND NOT EXISTS(SELECT 1 FROM ${table} WHERE user_id=?) RETURNING id`).bind(token,user.id,user.login_version,user.id),
+    env.DB.prepare(`INSERT INTO ${table}(subject,user_id) SELECT ?,id FROM auth_users WHERE id=? AND account_change_token=? RETURNING user_id`).bind(subject,user.id,token),
+  ]);
+  if(!result[1].results.length)throw new HttpError(409,'로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
+  return {...user,login_version:user.login_version+1};
 }

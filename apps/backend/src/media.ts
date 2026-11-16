@@ -2,7 +2,7 @@ export const postImageKey = /^posts\/[\w-]+\/[\w-]+\.(jpg|png|webp)$/;
 export const profileImageKey = /^profiles\/[\w-]+\/(avatar|cover)-[\w-]+\.(jpg|png|webp)$/;
 export function mediaUrl(key: string | null, request: Request, env: { MEDIA_BASE_URL?: string }) {
   const local=['localhost','127.0.0.1','[::1]'].includes(new URL(request.url).hostname);
-  return key ? (local ? '/api/media' : env.MEDIA_BASE_URL) + '/' + key : null;
+  return key ? '/api/media/' + key : null;
 }
 export function inlineImageKey(source:string,request:Request,env:{MEDIA_BASE_URL?:string}){
   let key:string|undefined;

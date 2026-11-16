@@ -44,7 +44,7 @@ export async function handleApplications(request:Request,env:AuthEnv){
   const token=randomUUID();
   const result=await env.DB.batch([
     env.DB.prepare("UPDATE writer_applications SET status=?,review_note=?,reviewed_by=?,reviewed_at=?,version=version+1,decision_token=? WHERE id=? AND version=? AND status='pending' AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND role='admin' AND disabled=0) AND (?='rejected' OR EXISTS(SELECT 1 FROM auth_users WHERE id=writer_applications.user_id AND role='reader' AND disabled=0)) RETURNING "+columns).bind(body.status,body.review_note.trim(),actor.id,now(),token,id,body.version,actor.id,body.status),
-    env.DB.prepare("UPDATE auth_users SET role='author',version=version+1 WHERE role='reader' AND disabled=0 AND id=(SELECT user_id FROM writer_applications WHERE id=? AND decision_token=? AND status='approved')").bind(id,token),
+    env.DB.prepare("UPDATE auth_users SET role='author',version=version+1,login_version=login_version+1 WHERE role='reader' AND disabled=0 AND id=(SELECT user_id FROM writer_applications WHERE id=? AND decision_token=? AND status='approved')").bind(id,token),
   ]);
   const row=result[0].results[0] as Application|undefined;
   if(!row)throw new HttpError(409,'신청서 또는 회원 권한이 변경되었습니다. 새로고침해 주세요.');

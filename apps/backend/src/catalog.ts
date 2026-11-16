@@ -13,14 +13,14 @@ export async function topicsForPost(db: D1Database, category: string, input: unk
 }
 export async function handleTopics(request: Request, env: AuthEnv) {
   if (request.method !== 'GET') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'GET'});
-  const rows = await env.DB.prepare("SELECT t.*, (SELECT count(*) FROM posts p WHERE p.status='published' AND EXISTS(SELECT 1 FROM json_each(p.topic_ids) j WHERE j.value=t.id)) AS post_count FROM topics t ORDER BY t.position,t.id").all<Topic>();
-  return json({topics: rows.results});
+  const rows = await env.DB.prepare("SELECT t.*, (SELECT count(*) FROM posts p JOIN auth_users u ON u.id=p.author_id WHERE p.status='published' AND u.disabled=0 AND EXISTS(SELECT 1 FROM json_each(p.topic_ids) j WHERE j.value=t.id)) AS post_count FROM topics t ORDER BY t.position,t.id").all<Topic>();
+  return json({topics: rows.results},200,{'Cache-Control':'public, max-age=60'});
 }
 export async function handleTrending(request:Request,env:AuthEnv){
   if(request.method!=='GET')return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'GET'});
   const today=new Date((now()+9*3600)*1000).toISOString().slice(0,10),start=new Date((now()+9*3600-6*86400)*1000).toISOString().slice(0,10);
   const rows=await env.DB.prepare("SELECT p.id,p.title,p.summary,u.id AS writer_id,u.name AS writer_name,r.view_count FROM posts p JOIN auth_users u ON u.id=p.author_id JOIN (SELECT post_id,sum(views) AS view_count FROM post_reads WHERE read_day>=? AND read_day<=? GROUP BY post_id) r ON r.post_id=p.id WHERE p.status='published' AND u.disabled=0 ORDER BY r.view_count DESC,p.published_at DESC,p.id LIMIT 4").bind(start,today).all<{id:string;title:string;summary:string;writer_id:string;writer_name:string;view_count:number}>();
-  return json({posts:rows.results.map(({writer_id,writer_name,...post})=>({...post,writer:{id:writer_id,name:writer_name}})),period_days:7});
+  return json({posts:rows.results.map(({writer_id,writer_name,...post})=>({...post,writer:{id:writer_id,name:writer_name}})),period_days:7},200,{'Cache-Control':'public, max-age=30'});
 }
 type WriterRow={id:string;name:string;bio:string;avatar_key:string|null;cover_key:string|null;post_count:number};
 function writerData(writer:WriterRow,request:Request,env:{MEDIA_BASE_URL?:string}){

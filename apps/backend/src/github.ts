@@ -1,9 +1,9 @@
 import { beginSignup } from './signup';
 import { randomBytes,createHash } from 'node:crypto';
 import { HttpError,json } from './http';
-import { type AuthEnv,type UserRow,now,digest,cookie,readCookie,createSession,currentUser,local,limited } from './session';
+import { type AuthEnv,type UserRow,now,digest,cookie,readCookie,createSession,currentUser,local,limited,linkIdentity } from './session';
 
-type Flow={verifier:string;origin:string;link_user_id:string|null;link_version:number;expires_at:number};
+type Flow={purpose:string;verifier:string;origin:string;link_user_id:string|null;link_version:number;expires_at:number};
 function originFor(request:Request,env:AuthEnv){
   const url=new URL(request.url);
   if(local(request)){const origin=url.searchParams.get('origin')??'http://127.0.0.1:3000';if(origin==='http://127.0.0.1:3000')return origin;}
@@ -23,9 +23,11 @@ export async function handleGitHub(request:Request,env:AuthEnv):Promise<Response
     if(request.headers.get('Sec-Fetch-Site')==='cross-site')throw new HttpError(403,'블로그에서 로그인을 시작해 주세요.');
     if(await limited(env.DB,digest('github-oauth:'+(request.headers.get('CF-Connecting-IP')||'local')),40))throw new HttpError(429,'로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.');
     const state=randomBytes(32).toString('hex'),verifier=randomBytes(48).toString('base64url'),actor=await currentUser(request,env);
+    const purpose=url.searchParams.get('reauth')==='1'?'reauth':'link';
+    if(purpose==='reauth'&&!actor)throw new HttpError(401,'로그인이 필요합니다.');
     await env.DB.batch([
       env.DB.prepare('DELETE FROM auth_github_states WHERE expires_at<=?').bind(now()),
-      env.DB.prepare('INSERT INTO auth_github_states(state_hash,verifier,origin,link_user_id,expires_at,link_version) VALUES(?,?,?,?,?,?)').bind(digest(state),verifier,origin,actor?.id??null,now()+600,actor?.login_version??0),
+      env.DB.prepare('INSERT INTO auth_github_states(state_hash,verifier,origin,link_user_id,expires_at,link_version,purpose) VALUES(?,?,?,?,?,?,?)').bind(digest(state),verifier,origin,actor?.id??null,now()+600,actor?.login_version??0,purpose),
     ]);
     const authorize=new URL('https://github.com/login/oauth/authorize');
     authorize.search=new URLSearchParams({client_id:env.GITHUB_CLIENT_ID,redirect_uri:origin+'/api/auth/callback/github',scope:'read:user user:email',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',prompt:'select_account'}).toString();
@@ -61,8 +63,8 @@ export async function handleGitHub(request:Request,env:AuthEnv):Promise<Response
     if(flow.link_user_id){
       const actor=await currentUser(request,env);
       if(!actor||actor.id!==flow.link_user_id||actor.login_version!==flow.link_version||actor.email.toLowerCase()!==email||(user&&user.id!==actor.id))return redirect(request,origin,'auth_error=link');
-      if(!user){const linked=await env.DB.prepare('INSERT INTO auth_github_accounts(subject,user_id) SELECT ?,id FROM auth_users WHERE id=? AND login_version=? AND disabled=0 RETURNING user_id').bind(subject,actor.id,flow.link_version).first();if(!linked)return redirect(request,origin,'auth_error=link');}
-      user=actor;
+      if(flow.purpose==='reauth'&&!user)return redirect(request,origin,'auth_error=link');
+      user = user ? actor : await linkIdentity(env,actor,'github',subject);
     }else if(!user){
       // Linking an existing identity requires its authenticated session, even with a verified matching email.
       if(await env.DB.prepare('SELECT id FROM auth_users WHERE email=?').bind(email).first())return redirect(request,origin,'auth_error=existing');
@@ -71,6 +73,6 @@ export async function handleGitHub(request:Request,env:AuthEnv):Promise<Response
     }
     if(!user||user.disabled)return redirect(request,origin,'auth_error=disabled');
     stage='session';
-    return redirect(request,origin,'auth=success',await createSession(request,env,user.id,user.login_version));
+    return redirect(request,origin,flow.purpose==='reauth'?'auth=reauth':'auth=success',await createSession(request,env,user.id,user.login_version));
   }catch{console.error('GitHub authentication failed',stage);return redirect(request,origin,'auth_error=github');}
 }

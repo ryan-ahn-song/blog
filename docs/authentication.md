@@ -24,8 +24,8 @@ Google Cloud의 해당 웹 OAuth 클라이언트에 아래 주소들을 등록�
 
 | 환경 | 승인된 JavaScript 원본 | 승인된 리디렉션 URI |
 | --- | --- | --- |
-| 운영 | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/google` |
-| 추가 운영 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/google` |
+| 이전 도메인(전환 호환) | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/google` |
+| 메인 운영 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/google` |
 | 로컬 | `http://127.0.0.1:3000` | `http://127.0.0.1:3000/api/auth/callback/google` |
 
 기존 주소를 유지하고 새 도메인 주소를 각각 추가합니다. OAuth 동의 화면의 승인된 도메인 목록을 사용하는 경우에도 `21stark.dev`와 `21st-ark.dev`를 모두 등록합니다. 두 운영 도메인은 서로 다른 사이트이므로 로그인 세션 쿠키는 도메인별로 유지됩니다.
@@ -50,7 +50,7 @@ Google Cloud의 해당 웹 OAuth 클라이언트에 아래 주소들을 등록�
 
 포스트은 D1 `posts`에 저장합니다. 제목 최대 160자, 소개 280자, 본문 80,000자이며 본문은 일반 텍스트로 표시해 HTML을 실행하지 않습니다. 초안은 본인과 관리자만 조회할 수 있습니다. 수정 시 `revision`을 비교해 다른 창의 변경을 덮어쓰지 않으며, 업로드 취소 시 공개 목록에서 제외합니다. 홈·검색·필자·저장한 포스트은 실제 DB 조회 결과만 표시하며, 포스트이 없는 경우 빈 상태를 표시합니다.
 
-작성 중인 포스트은 해당 사용자·포스트별로 브라우저에 백업하고, 임시저장 버튼으로 D1에 저장합니다. 포스트쓰기 화면 이탈이나 창 닫기 전에는 저장하지 않은 변경을 알립니다. 이미지 업로드는 작성자·관리자만 사용할 수 있고 파일 내용과 MIME 형식을 검사합니다. 최대 8MB의 JPG·PNG·WebP를 R2 `posts/{사용자 ID}/{UUID}`에 저장하며 운영 공개 주소는 `https://media.21stark.dev`입니다. 공개 R2의 이미지 URL을 아는 사람은 초안 이미지도 볼 수 있으므로 비공개 문서를 업로드하지 않습니다.
+작성 중인 포스트은 해당 사용자·포스트별로 브라우저에 백업하고, 임시저장 버튼으로 D1에 저장합니다. 포스트쓰기 화면 이탈이나 창 닫기 전에는 저장하지 않은 변경을 알립니다. 이미지 업로드는 작성자·관리자만 사용할 수 있고 파일 내용과 MIME 형식을 검사합니다. 최대 8MB의 JPG·PNG·WebP를 R2 `posts/{사용자 ID}/{UUID}`에 저장하며 다운로드는 `/api/media`의 권한 검사로 처리합니다. R2의 공개 도메인과 개발 URL은 비활성화합니다. 초안 이미지는 소유자·관리자만 볼 수 있고 공개 포스트에서 참조한 이미지는 열람할 수 있습니다.
 
 추가 API: `GET /api/auth/providers`, `GET /api/auth/google`, `GET /api/auth/callback/google`, `GET /api/writers`, `GET/POST /api/posts`, `GET/PUT /api/posts/:id`, `POST /api/media`, `GET /api/admin/users`, `PATCH /api/admin/users/:id`.
 
@@ -87,7 +87,7 @@ The document toolbar's image button supports multiple files (up to ten per selec
 
 The upload response includes `key`, display `url` and the stable `source` path `/api/media/posts/{userId}/{uuid}.{ext}`. Inline blocks and their Markdown reference the stable path, preserving image references across local development, aliases and media-domain changes. Managed image URLs are normalized to that path on save; the API checks ownership, object existence and a maximum of fifty managed images per document. Captions, ordering and image dimensions remain in the block JSON. Markdown downloads expand image paths to absolute site URLs.
 
-Local media requests serve the uploaded bytes from local R2. In production the same stable endpoint verifies the object and redirects to the configured `MEDIA_BASE_URL` (currently `https://media.21stark.dev`), allowing R2's custom-domain cache to serve the binary. The redirect is cacheable for one hour; object keys are unique and the objects retain immutable cache metadata. This is a public-image model: knowledge of an image URL permits access even if the containing post is a draft. Deleting a block only removes its document reference; physical R2 deletion is deferred so undo and other references remain valid. Automatic unreferenced-object cleanup is not yet implemented.
+Local and production media use the same `/api/media` authorization proxy. R2 is not exposed directly. The owner/admin can preview private images; visitors can read references from published posts or current public profiles. Responses use private, no-store. Removing a block removes its reference; physical deletion is deferred for undo/reuse. Account deletion retains durable R2 cleanup. Cumulative uploads are limited to 256MB / 1,000 objects per account.
 
 
 ## Writer subscriptions and trending
@@ -123,13 +123,13 @@ Cover guidance is 1500 x 500 pixels (3:1), and avatar guidance is 400 x 400 pixe
 
 ## GitHub OAuth 설정
 
-GitHub OAuth App의 Homepage URL은 `https://21stark.dev`로 등록합니다. 콜백 URL은 필요한 환경을 모두 추가합니다.
+GitHub OAuth App의 Homepage URL은 `https://21st-ark.dev`로 등록합니다. 콜백 URL은 필요한 환경을 모두 추가합니다.
 
 | 환경 | 서비스 URL | GitHub 콜백 | Google 콜백 |
 |---|---|---|---|
 | 로컬 | `http://127.0.0.1:3000` | `http://127.0.0.1:3000/api/auth/callback/github` | `http://127.0.0.1:3000/api/auth/callback/google` |
-| 운영 | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/github` | `https://21stark.dev/api/auth/callback/google` |
-| 추가 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/github` | `https://21st-ark.dev/api/auth/callback/google` |
+| 이전 도메인(전환 호환) | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/github` | `https://21stark.dev/api/auth/callback/google` |
+| 메인 운영 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/github` | `https://21st-ark.dev/api/auth/callback/google` |
 
 로컬은 `.dev.vars`에 `GITHUB_CLIENT_ID`와 `GITHUB_CLIENT_SECRET`을 저장합니다. 운영 배포 시 API Worker에 같은 이름의 설정을 추가해야 하며, 시크릿은 반드시 Secret 형식으로 설정합니다. 현재 작업에서는 운영 배포나 운영 설정 변경을 하지 않습니다. 인증 요청은 접속 중인 허용 도메인의 콜백 주소를 명시합니다. 콜백 URL 와일드카드는 필요하지 않습니다.
 

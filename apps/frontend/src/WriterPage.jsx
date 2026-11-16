@@ -10,7 +10,7 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
   const activeUser=useRef(user?.id);activeUser.current=user?.id;
   const [subscribing,setSubscribing]=useState(false),[subscriptionError,setSubscriptionError]=useState('');
   useEffect(()=>{
-    const controller=new AbortController();setWriter(null);setError('');
+    const controller=new AbortController();setError('');
     api('/api/writers/'+id,{signal:controller.signal}).then(result=>{if(!controller.signal.aborted){setWriter(result.writer);onLoaded(result.writer);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});
     return()=>controller.abort();
   },[id,version,user?.id,retry,onLoaded]);

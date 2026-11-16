@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, jsonRequest } from './api';
+import { api, jsonRequest, clearApiCache } from './api';
 import './my-posts.css';
 const number=value=>(value??0).toLocaleString('ko-KR');
 const shortDate=value=>value.slice(5).replace('-','.');
@@ -34,7 +34,7 @@ export default function MyPosts({user,onEdit,refreshKey,onChanged}){
   const [result,setResult]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[page,setPage]=useState(0),[days,setDays]=useState(28),[status,setStatus]=useState('all'),[query,setQuery]=useState(''),[sort,setSort]=useState('updated'),[retry,setRetry]=useState(0),[opening,setOpening]=useState(null);
   const [deleting,setDeleting]=useState(null),activeUser=useRef(user.id);activeUser.current=user.id;
   useEffect(()=>{
-    const controller=new AbortController();let active=true,inFlight=false;setResult(null);setLoading(true);setError('');
+    const controller=new AbortController();let active=true,inFlight=false;setLoading(true);setError('');
     async function load(){
       if(inFlight)return;inFlight=true;setLoading(true);
       try{const response=await api('/api/author/dashboard?'+new URLSearchParams({days:String(days),page:String(page),status,q:query.trim(),sort}),{signal:controller.signal});if(active){setResult(response);setError('');}}
@@ -61,8 +61,8 @@ export default function MyPosts({user,onEdit,refreshKey,onChanged}){
   const current=result?.owner_id===user.id?result:null,summary=current?.summary;
   const metrics=[{label:'독자 수',value:summary?.readers,unit:'명',detail:'최근 '+days+'일 · 계정·브라우저 기준',hint:'포스트를 연 계정 또는 브라우저 기준입니다. 작성자 본인의 열람은 제외합니다.'},{label:'조회 수',value:summary?.views,unit:'회',detail:'최근 '+days+'일 · 반복 열람 중복 제외',hint:'같은 날짜에 같은 독자가 30분 이상 간격을 두고 포스트를 연 횟수입니다.'},{label:'저장 수',value:summary?.bookmarks,unit:'건',detail:'현재 저장된 북마크',hint:'독자가 저장한 포스트의 수입니다. 같은 독자의 다른 포스트 저장도 포함됩니다.'},{label:'좋아요',value:summary?.likes,unit:'개',detail:'현재 받은 좋아요'}];
   return <section className="author-dashboard" aria-label="내 포스트와 독자 통계">
-    <div className="dashboard-intro"><div><h2>내 포스트와 독자</h2><p>초안과 업로드한 포스트, 독자의 반응을 한곳에서 확인하세요.</p></div><div className="dashboard-refresh"><button className="refresh-button" aria-label="통계 새로고침" disabled={loading} onClick={()=>setRetry(n=>n+1)}>↻</button></div></div>
-    {error&&<p className="auth-error dashboard-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(n=>n+1)}>다시 시도</button></p>}
+    <div className="dashboard-intro"><div><h2>내 포스트와 독자</h2><p>초안과 업로드한 포스트, 독자의 반응을 한곳에서 확인하세요.</p></div><div className="dashboard-refresh"><button className="refresh-button" aria-label="통계 새로고침" disabled={loading} onClick={()=>{clearApiCache();setRetry(n=>n+1);}}>↻</button></div></div>
+    {error&&<p className="auth-error dashboard-error" role="alert">{error} <button className="text-button" onClick={()=>{clearApiCache();setRetry(n=>n+1);}}>다시 시도</button></p>}
     <div className="dashboard-metrics">{metrics.map(metric=><div className="dashboard-metric" key={metric.label} title={metric.hint}><p>{metric.label}</p><strong>{summary?number(metric.value):'—'}<small>{metric.unit}</small></strong><span>{metric.detail}</span></div>)}</div>
     <section className="dashboard-chart-panel" aria-labelledby="visitors-title"><div className="chart-heading"><div><h3 id="visitors-title">방문자 추이</h3><p>내 포스트를 방문한 일별 독자 수</p></div><div className="period-control" role="group" aria-label="통계 기간">{[7,28,90].map(value=><button key={value} aria-pressed={days===value} onClick={()=>{setDays(value);setPage(0);}}>{value}일</button>)}</div></div>{current?<VisitorChart series={current.series}/>:<div className="dashboard-loading" role="status">{error?'독자 통계를 불러오지 못했어요.':'독자 통계를 불러오고 있어요.'}</div>}<div className="chart-footnote"><span><i/>독자</span><span>한국 시간 기준{current?' · '+new Date(current.generated_at*1000).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Seoul'})+' 갱신':''}</span></div></section>
     <section className="dashboard-posts" aria-label="내 포스트 목록"><div className="posts-toolbar"><div className="post-status-tabs" role="group" aria-label="포스트 상태">{[['all','전체',summary?.total],['published','업로드됨',summary?.published],['draft','초안',summary?.drafts]].map(([value,label,count])=><button key={value} aria-pressed={status===value} onClick={()=>{setStatus(value);setPage(0);}}>{label}<span>{count??'—'}</span></button>)}</div><div className="post-filters"><label className="sr-only" htmlFor="my-post-search">내 포스트 제목 검색</label><input id="my-post-search" type="search" maxLength={100} placeholder="제목으로 찾기" value={query} onChange={event=>{setQuery(event.target.value);setPage(0);}}/><label className="sr-only" htmlFor="my-post-sort">내 포스트 정렬</label><select id="my-post-sort" value={sort} onChange={event=>{setSort(event.target.value);setPage(0);}}><option value="updated">최근 수정순</option><option value="readers">독자 많은 순</option><option value="bookmarks">저장 많은 순</option></select></div></div>

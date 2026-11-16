@@ -1,14 +1,45 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "21st-ark-api", "main": "src/index.ts", "compatibility_date": "2026-11-10",
-  "triggers": { "crons": ["0 * * * *"] },
+  "name": "21st-ark-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-10",
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
   "vars": {
     "GOOGLE_CLIENT_ID": "1035642528206-nbkubfv930b2kfm380v6g5ihga195805.apps.googleusercontent.com",
     "GITHUB_CLIENT_ID": "Ov23lirEpAhFpJYlJxsZ",
-    "AUTH_ORIGINS": "https://21stark.dev,https://21st-ark.dev",
+    "AUTH_ORIGINS": "https://21st-ark.dev,https://21stark.dev",
     "BOOTSTRAP_ADMIN_EMAIL": "ryansong0805@gmail.com",
     "MEDIA_BASE_URL": "https://media.21stark.dev"
   },
-  "d1_databases": [{ "binding": "DB", "database_name": "21st-ark-db", "database_id": "38680c4f-047f-4e59-b846-2167b85c067a", "migrations_dir": "migrations" }],
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "21st-ark-media" }]
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "21st-ark-db",
+      "database_id": "38680c4f-047f-4e59-b846-2167b85c067a",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "21st-ark-media"
+    }
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false
+    }
+  }
 }

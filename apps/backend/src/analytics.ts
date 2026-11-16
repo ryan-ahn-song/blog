@@ -13,6 +13,8 @@ export async function recordRead(request:Request,env:AuthEnv){
   if(!post)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   const actor=await currentUser(request,env);
   if(actor?.id===post.author_id||request.headers.get('DNT')==='1'||request.headers.get('Sec-GPC')==='1'||/bot|crawler|spider|preview/i.test(request.headers.get('User-Agent')??''))return json({recorded:false});
+  const edgeIp=request.headers.get('CF-Connecting-IP');
+  if(edgeIp&&await limited(env.DB,digest('read-edge:'+day(now())+':'+edgeIp),300))throw new HttpError(429,'요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   const existing=readCookie(request,'visitor'),token=/^[a-f0-9]{64}$/.test(existing)?existing:randomBytes(32).toString('hex');
   const identity=digest(actor?'reader-account:'+actor.id:'reader-browser:'+token),time=now();
   if(await limited(env.DB,digest('read-limit:'+identity),120))throw new HttpError(429,'요청이 많습니다. 잠시 후 다시 시도해 주세요.');
@@ -26,9 +28,12 @@ export async function authorDashboard(request:Request,env:AuthEnv){
   const days=Number(params.get('days')??28),status=params.get('status')??'all',sort=params.get('sort')??'updated',q=(params.get('q')??'').trim().slice(0,100);
   if(![7,28,90].includes(days)||!['all','draft','published'].includes(status)||!['updated','readers','bookmarks'].includes(sort))throw new HttpError(400,'조회 조건을 확인해 주세요.');
   const page=Math.max(0,Math.min(100000,Number(params.get('page'))||0))|0,time=now(),start=midnight(time)-(days-1)*86400,startDay=day(start),sparkStart=day(midnight(time)-13*86400);
-  const counts=await env.DB.prepare("SELECT count(*) AS total,coalesce(sum(status='draft'),0) AS drafts,coalesce(sum(status='published'),0) AS published FROM posts WHERE author_id=?").bind(actor.id).first<{total:number;drafts:number;published:number}>();
-  const engagement=await env.DB.prepare("SELECT (SELECT count(DISTINCT r.visitor_hash) FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=?) AS readers,(SELECT coalesce(sum(r.views),0) FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=?) AS views,(SELECT count(*) FROM post_bookmarks b JOIN posts p ON p.id=b.post_id JOIN auth_users u ON u.id=b.user_id WHERE p.author_id=? AND u.disabled=0) AS bookmarks,(SELECT count(*) FROM post_likes l JOIN posts p ON p.id=l.post_id JOIN auth_users u ON u.id=l.user_id WHERE p.author_id=? AND u.disabled=0) AS likes").bind(actor.id,startDay,actor.id,startDay,actor.id,actor.id).first<{readers:number;views:number;bookmarks:number;likes:number}>();
-  const activity=await env.DB.prepare('SELECT r.read_day,count(DISTINCT r.visitor_hash) AS readers,sum(r.views) AS views FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=? GROUP BY r.read_day ORDER BY r.read_day').bind(actor.id,startDay).all<{read_day:string;readers:number;views:number}>();
+  const [countRows,engagementRows,activity]=await env.DB.batch<Record<string,number|string>>([
+    env.DB.prepare("SELECT count(*) AS total,coalesce(sum(status='draft'),0) AS drafts,coalesce(sum(status='published'),0) AS published FROM posts WHERE author_id=?").bind(actor.id),
+    env.DB.prepare("SELECT (SELECT count(DISTINCT r.visitor_hash) FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=?) AS readers,(SELECT coalesce(sum(r.views),0) FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=?) AS views,(SELECT count(*) FROM post_bookmarks b JOIN posts p ON p.id=b.post_id JOIN auth_users u ON u.id=b.user_id WHERE p.author_id=? AND u.disabled=0) AS bookmarks,(SELECT count(*) FROM post_likes l JOIN posts p ON p.id=l.post_id JOIN auth_users u ON u.id=l.user_id WHERE p.author_id=? AND u.disabled=0) AS likes").bind(actor.id,startDay,actor.id,startDay,actor.id,actor.id),
+    env.DB.prepare('SELECT r.read_day,count(DISTINCT r.visitor_hash) AS readers,sum(r.views) AS views FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND r.read_day>=? GROUP BY r.read_day ORDER BY r.read_day').bind(actor.id,startDay)
+  ]);
+  const counts=countRows.results[0],engagement=engagementRows.results[0];
   const clauses=['p.author_id=?'],values:(string|number)[]=[actor.id];
   if(status!=='all'){clauses.push('p.status=?');values.push(status);}
   if(q){clauses.push('instr(lower(p.title),lower(?))>0');values.push(q);}

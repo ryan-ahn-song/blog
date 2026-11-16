@@ -3,7 +3,7 @@ export class HttpError extends Error {
 }
 export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
   const result = new Headers(headers);
-  result.set('Cache-Control', 'no-store');
+  if(!result.has('Cache-Control'))result.set('Cache-Control', 'no-store');
   result.set('X-Content-Type-Options', 'nosniff');
   return Response.json(data, { status, headers: result });
 }

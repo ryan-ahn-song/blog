@@ -1,28 +1,20 @@
-# Cloudflare Workers Builds
+# Cloudflare 배포와 메인 도메인
 
-프론트와 백엔드를 각각 별도 Worker로 배포합니다. 두 Worker의 루트 디렉터리는 저장소 루트(`/`)로 설정합니다. 의존성 설치는 Cloudflare의 자동 `npm ci`를 사용합니다.
+메인 도메인: **https://21st-ark.dev**. https://21stark.dev는 경로·쿼리를 유지하여 308 이동합니다. 두 도메인의 Custom Domain 연결은 유지합니다. 전환 전에 시작한 OAuth 콜백만 원래 호스트에서 처리합니다. 세션 쿠키는 호스트별이므로 새 메인 도메인에서 다시 로그인해야 합니다. 기존 호스트로 보내는 변경 요청은 421로 거부하며 다른 도메인으로 본문을 자동 전달하지 않습니다.
 
-| 설정 | 프론트엔드 | 백엔드 |
-| --- | --- | --- |
-| Worker 이름 | `21st-ark-web` | `21st-ark-api` |
-| 빌드 명령 | `npm run build:frontend` | `npm run build:backend` |
-| 배포 명령 | `npm run deploy:frontend` | `npm run deploy:backend` |
+| 설정 | 프론트 | API |
+|---|---|---|
+| Worker | 21st-ark-web | 21st-ark-api |
+| 저장소 루트 | / | / |
+| 빌드 | npm run build:frontend | npm run build:backend |
+| 배포 | npm run deploy:frontend | npm run deploy:backend |
 
-루트의 기본 배포 명령 `npx wrangler deploy`는 사용하지 않습니다. 전용 npm 명령은 해당 앱 디렉터리에서 Wrangler를 실행합니다. 전용 빌드 명령을 사용하면 프론트 CI에서 백엔드 이름을 덮어쓰는 경고도 방지합니다. Cloudflare 프로젝트 이름과 해당 앱의 `wrangler.jsonc` 내 `name`은 일치해야 합니다.
+API 배포 명령은 D1 원격 마이그레이션을 먼저 적용합니다. 0014 → 0015 → 0016을 적용한 뒤 새 API를 배포합니다. 웹은 API service binding을 사용합니다. workers.dev와 Preview URL은 양쪽 Worker에서 끄며 공개 접속은 Custom Domain으로만 받습니다.
 
-## 최초 배포 순서
+프론트 assets.run_worker_first=true는 HTML의 CSP/HSTS/클릭재킹 방지 헤더와 도메인 이동이 정적 파일 응답에서도 적용되게 합니다. 정적 자산 요청도 Worker 실행을 통과하므로 Workers 요청 사용량을 함께 확인합니다. API 오류 로그는 활성화하되 invocation_logs와 traces는 꺼 OAuth 코드·쿠키가 요청 로그에 저장되지 않게 합니다.
 
-운영 이미지 저장소는 R2 `21st-ark-media`이며 공개 주소는 `https://media.21stark.dev`입니다. 백엔드 바인딩 이름은 `MEDIA`입니다. 운영 화면의 사진·로고는 이 주소에서 읽고, 로컬 개발은 기존 `public/assets`를 사용합니다. 새 이미지를 추가할 때는 같은 파일 이름으로 R2에 업로드한 뒤 콘텐츠에서 참조합니다.
+사용자 이미지는 비공개 R2 21st-ark-media의 MEDIA 바인딩으로 읽고 /api/media에서 권한을 검사합니다. 로고·아이콘은 프론트 /assets에 포함합니다. 배포 후 R2의 media.21stark.dev Access 및 Public Development URL을 모두 꺼야 원본 우회가 차단됩니다. MEDIA_BASE_URL은 과거 문서 URL을 인식하는 호환 설정이며 새 이미지 응답 주소로 사용하지 않습니다. 저장된 이미지와 DB를 삭제하지 않습니다.
 
-`21st-ark-web`의 workers.dev 주소는 배포 설정으로 활성화합니다. 백엔드는 프론트의 `API` service binding으로 접근하므로 별도 공개 주소가 없어도 됩니다.
+OAuth의 신규 시작 주소와 Homepage URL은 https://21st-ark.dev, 콜백은 /api/auth/callback/google 및 /api/auth/callback/github입니다. Google 승인된 JavaScript 원본에는 https://21st-ark.dev를 유지합니다. 전환 기간에는 기존 21stark.dev 콜백 등록과 AUTH_ORIGINS를 함께 유지합니다. 로컬은 http://127.0.0.1:3000을 사용합니다.
 
-프론트의 운영 도메인은 `https://21stark.dev`와 `https://21st-ark.dev`입니다. 두 주소 모두 `21st-ark-web` Worker의 Custom Domain으로 연결하고 프론트 `wrangler.jsonc`의 `routes`에 유지합니다. API는 각 도메인의 `/api/*`에서 같은 백엔드로 전달합니다. 이미지는 공통으로 `https://media.21stark.dev`를 사용합니다.
-
-1. Cloudflare D1 데이터베이스 `21st-ark-db`를 생성합니다.
-2. 반환된 실제 UUID를 `apps/backend/wrangler.jsonc`의 `database_id`에 넣습니다. 현재 운영 D1 ID는 반영되어 있습니다. 새 환경을 만들 때는 해당 환경의 UUID로 교체합니다.
-3. `21st-ark-api` Worker를 먼저 배포합니다. `deploy:backend`는 D1 ID가 아직 자리표시자이면 배포를 중단합니다.
-4. 프론트 `21st-ark-web` Worker를 배포합니다. API service binding 대상인 `21st-ark-api`가 먼저 존재해야 합니다.
-
-로컬에서 확인하려면 `npm run dev`를 실행합니다. `npm run check`는 코드 검사, `npm run test:render`는 기존 화면 렌더링 검사입니다. `npm run db:check`는 로컬 D1 연결만 검사하며, 운영 DB를 생성하거나 변경하지 않습니다.
-
-참고: [Cloudflare 모노레포 설정](https://developers.cloudflare.com/workers/ci-cd/builds/advanced-setups/), [빌드 문제 해결](https://developers.cloudflare.com/workers/ci-cd/builds/troubleshoot/).
+로컬 검증: npm run check, npm run test:security-performance, npm run test:features, npm run test:github, npm run test:account-controls, npm run test:render. 운영 설정은 docs/owasp-review.md의 실측 결과를 확인합니다.

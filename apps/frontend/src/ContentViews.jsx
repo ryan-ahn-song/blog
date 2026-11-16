@@ -9,7 +9,7 @@ function blockText(value){
   if(typeof value.text==='string')return value.text;
   return [blockText(value.content??value.rows??value.cells),blockText(value.children),value.type==='image'?value.props?.caption:value.type==='linkEmbed'?value.props?.title||value.props?.href:''].filter(Boolean).join(' ');
 }
-function excerpt(post){return post.body_format==='markdown'&&post.body_doc?(blockText(post.body_doc).slice(0,240)||'포스트 읽기'):post.body.slice(0,240);}
+function excerpt(post){if(post.excerpt!==undefined)return post.excerpt;return post.body_format==='markdown'&&post.body_doc?(blockText(post.body_doc).slice(0,240)||'포스트 읽기'):post.body.slice(0,240);}
 export function Avatar({ writer }) { return <span className="avatar">{writer.avatar_url?<img src={writer.avatar_url} alt="" loading="lazy"/>:Array.from(writer.name)[0]}</span>; }
 const paths = {
   heart: 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z',
@@ -20,7 +20,7 @@ const paths = {
 export function Icon({ name }) { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]}/></svg>; }
 export function PostCard({ post: p, topics, first, pending }) {
   return <article className="post">
-    <header className="post-header"><button className="author-avatar-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name+'의 프로필'}><Avatar writer={p.writer}/></button><button className="author-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name + '의 프로필 보기'}><strong>{p.writer.name}</strong><time dateTime={new Date((p.published_at ?? p.created_at) * 1000).toISOString()}>{postDate(p)} · {Math.max(1, Math.ceil(p.body.length / 500))}분 읽기</time></button><button className="post-category" data-category={p.category}>{topicName(topics, p.category)}</button></header>
+    <header className="post-header"><button className="author-avatar-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name+'의 프로필'}><Avatar writer={p.writer}/></button><button className="author-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name + '의 프로필 보기'}><strong>{p.writer.name}</strong><time dateTime={new Date((p.published_at ?? p.created_at) * 1000).toISOString()}>{postDate(p)} · {p.reading_minutes??Math.max(1, Math.ceil((p.body?.length??0) / 500))}분 읽기</time></button><button className="post-category" data-category={p.category}>{topicName(topics, p.category)}</button></header>
     <button className="post-title" data-post={p.id}><h2>{p.title}</h2></button>{p.summary && <p className="post-summary">{p.summary}</p>}
     {(p.writer_category||p.writer_tags?.length>0)&&<div className="post-writer-labels" aria-label="필자의 분류와 태그">{p.writer_category&&<span className="post-writer-category">{p.writer_category.name}</span>}{p.writer_tags?.map(tag=><span key={tag.id}>#{tag.name}</span>)}</div>}
     {p.image ? <button className="post-visual" data-post={p.id} aria-label={p.title + ' 읽기'}><img src={p.image} alt={p.title} fetchPriority={first ? 'high' : 'auto'} loading={first ? 'eager' : 'lazy'}/><span className="visual-overlay"><span>{topicName(topics, p.category)}</span><span className="open-circle" aria-hidden="true">↗</span></span></button> : <button className="post-text-preview" data-post={p.id} aria-label={p.title + ' 읽기'}>{excerpt(p)}</button>}

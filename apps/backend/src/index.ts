@@ -12,7 +12,13 @@ import { HttpError, json } from './http';
 import type { AuthEnv } from './session';
 export interface Env extends AuthEnv { MEDIA: R2Bucket; MEDIA_BASE_URL?: string }
 export default {
-  async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){ctx.waitUntil(cleanupAccountMedia(env));},
+  async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){
+    ctx.waitUntil(Promise.all([
+      cleanupAccountMedia(env),
+      env.DB.batch(['auth_pending_signups','auth_login_limits','auth_sessions','auth_oauth_states','auth_github_states'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE expires_at<=unixepoch()'))),
+      env.DB.prepare('DELETE FROM account_security_events WHERE created_at<unixepoch()-7776000').run(),
+    ]));
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     try {

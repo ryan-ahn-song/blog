@@ -10,7 +10,7 @@ let readQueue=Promise.resolve();
 import AdminPanel from './AdminPanel';
 import WriterPage from './WriterPage';
 import { PostCard, WriterList, EmptyState, Explore, topicName } from './ContentViews';
-import { api, jsonRequest } from './api';
+import { api, jsonRequest, setApiScope, clearApiCache } from './api';
 
 const oauthErrors = { state: '로그인 요청이 만료되었습니다. 다시 시작해 주세요.', cancelled: '로그인을 취소했습니다.', google: 'Google 로그인에 실패했습니다. 다시 시도해 주세요.', github: 'GitHub 로그인에 실패했습니다. 다시 시도해 주세요.', github_email: 'GitHub에서 기본 이메일 인증을 마친 뒤 다시 로그인해 주세요.', existing: '이미 가입된 이메일입니다. 기존에 연결한 서비스로 로그인한 후, 계정 및 설정에서 다른 로그인 계정을 연결해 주세요.', link: '현재 계정과 인증된 기본 이메일이 같은 계정을 선택해 주세요.', disabled: '이용이 중지된 계정입니다. 관리자에게 문의해 주세요.' };
 const emptyFeed = { key: '', posts: [], total: 0, page: 0, loading: true, error: '' };
@@ -24,6 +24,7 @@ export default function App() {
   const [user, setUser] = useState(null), [authOpen, setAuthOpen] = useState(Boolean(initialAuthError)), [authChecking, setAuthChecking] = useState(true), [authError, setAuthError] = useState(false);
   const [view, setView] = useState('home'), [query, setQuery] = useState(''), [category, setCategory] = useState('all'), [author, setAuthor] = useState(null), [topicId, setTopicId] = useState('all');
   const [editing, setEditing] = useState(null), [dirty, setDirty] = useState(false), [version, setVersion] = useState(0), [requestPage, setRequestPage] = useState(0);
+  const feedCache=useRef(new Map());
   const [feed, setFeed] = useState(emptyFeed), [topics, setTopics] = useState([]), [writers, setWriters] = useState([]), [writerTotal, setWriterTotal] = useState(0), [writerPage, setWriterPage] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(true), [catalogError, setCatalogError] = useState('');
   const [searchWriters, setSearchWriters] = useState({ writers: [], loading: false, error: '' });
@@ -38,12 +39,13 @@ export default function App() {
   const canWrite = Boolean(user && ['author', 'admin'].includes(user.role));
   const canStartPost = canWrite && (view !== 'author' || author?.id === user.id);
   const criteria = JSON.stringify({ bookmarked: view === 'saved' ? '1' : undefined, subscribed:view==='subscriptions'?'1':undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined,writer_category:view==='author'?writerFilters.category??undefined:undefined,writer_tag:view==='author'?writerFilters.tag??undefined:undefined });
-  const feedKey = criteria + ':' + (user?.id ?? 'anonymous');
-  const currentFeed = feed.key === feedKey ? feed : { ...emptyFeed, key: feedKey };
+  const feedKey = criteria + ':' + (user?.id ?? 'anonymous')+':'+version+':'+subscriptionVersion+':'+taxonomyVersion;
+  const currentFeed = feed.key === feedKey ? feed : feedCache.current.get(feedKey)??{ ...emptyFeed, key: feedKey };
   const title = author ? author.name || '필자 프로필' : category !== 'all' ? topicName(topics, category) : { home: '홈', search: '검색', writers: '필자', saved: '저장한 포스트', subscriptions:'구독한 포스트', write: '포스트 작성', 'my-posts': '내 포스트 관리', admin: '멤버 관리' }[view];
-  const refreshContent = () => { setRequestPage(0); setVersion(v => v + 1); };
+  const refreshContent = () => { clearApiCache();feedCache.current.clear(); setRequestPage(0); setVersion(v => v + 1); };
 
   function signedIn(account) {
+    setApiScope(account.id+':'+account.role+':'+account.version);
     setEditing(null); setDirty(false);
     let returnPost=null;try{const saved=JSON.parse(sessionStorage.getItem('ark-auth-return-post'));sessionStorage.removeItem('ark-auth-return-post');if(saved&&typeof saved.id==='string'&&typeof saved.at==='number'&&/^[\w-]{1,100}$/.test(saved.id)&&Date.now()-saved.at>=0&&Date.now()-saved.at<1800000)returnPost=saved.id;}catch{}
     if(returnPost){setView('home');setAuthor(null);openArticle(returnPost);setMessage('로그인했습니다.');return;}
@@ -52,27 +54,33 @@ export default function App() {
   }
   function rememberLoginReturn(){try{if(articleIdRef.current)sessionStorage.setItem('ark-auth-return-post',JSON.stringify({id:articleIdRef.current,at:Date.now()}));else if(!initialAuthError)sessionStorage.removeItem('ark-auth-return-post');}catch{}}
   function closeAuthDialog(){setAuthOpen(false);try{sessionStorage.removeItem('ark-auth-return-post');}catch{}}
+  const authRequest=useRef(0);
   async function refreshAuth() {
+    const sequence=++authRequest.current;
     setAuthChecking(true); setAuthError(false);
-    try { const body = await api('/api/auth/me'); setUser(body.user); setSignup(body.signup??null); if(body.signup)setAuthOpen(false); else if(params.get('auth')==='signup'&&!body.user){setAuthOpen(true);setMessage('가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');} if (loginReturn.current && body.user) { loginReturn.current = false; signedIn(body.user); } }
-    catch { setAuthError(true); } finally { setAuthChecking(false); }
+    try { const body = await api('/api/auth/me'); if(sequence!==authRequest.current)return; setApiScope(body.user?body.user.id+':'+body.user.role+':'+body.user.version:'anonymous'); setUser(body.user); if(params.get('auth')==='reauth'&&body.user)setSettings('account'); setSignup(body.signup??null); if(body.signup)setAuthOpen(false); else if(params.get('auth')==='signup'&&!body.user){setAuthOpen(true);setMessage('가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');} if (loginReturn.current && body.user) { loginReturn.current = false; signedIn(body.user); } }
+    catch { if(sequence===authRequest.current)setAuthError(true); } finally { if(sequence===authRequest.current)setAuthChecking(false); }
   }
+  useEffect(()=>{let refreshing=false;const expired=()=>{if(refreshing)return;refreshing=true;setAuthOpen(true);setMessage('로그인이 만료되었습니다. 다시 로그인해 주세요.');refreshAuth().finally(()=>{refreshing=false;});};window.addEventListener('ark-auth-expired',expired);return()=>window.removeEventListener('ark-auth-expired',expired);},[]);
   useEffect(() => {
     refreshAuth();
     if (params.has('auth') || params.has('auth_error')) { const url = new URL(location.href); url.searchParams.delete('auth'); url.searchParams.delete('auth_error'); history.replaceState(null, '', url.href); }
   }, []);
   useEffect(() => {
-    const controller = new AbortController(); setCatalogLoading(true); setCatalogError('');
-    Promise.all([api('/api/topics', { signal: controller.signal }), api('/api/writers', { signal: controller.signal })]).then(([catalog, people]) => {
-      if (controller.signal.aborted) return;
-      setTopics(catalog.topics); setWriters(people.writers); setWriterTotal(people.total); setWriterPage(0);
-    }).catch(e => { if (!controller.signal.aborted) setCatalogError(e.message); }).finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
-    return () => controller.abort();
-  }, [version, user?.role, user?.name]);
+    const controller=new AbortController();setCatalogError('');
+    api('/api/topics',{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setTopics(result.topics);}).catch(error=>{if(!controller.signal.aborted)setCatalogError(error.message);});
+    return()=>controller.abort();
+  },[version]);
+  useEffect(()=>{
+    if(view!=='writers'||articleId)return;
+    const controller=new AbortController();setCatalogLoading(!writers.length);setCatalogError('');
+    api('/api/writers',{signal:controller.signal}).then(people=>{if(!controller.signal.aborted){setWriters(people.writers);setWriterTotal(people.total);setWriterPage(0);}}).catch(error=>{if(!controller.signal.aborted)setCatalogError(error.message);}).finally(()=>{if(!controller.signal.aborted)setCatalogLoading(false);});
+    return()=>controller.abort();
+  },[view,version,articleId]);
   useEffect(() => {
-    if (!browsing.includes(view) || (['saved','subscriptions'].includes(view) && !user)) return;
+    if (authChecking||articleId||!browsing.includes(view) || (['saved','subscriptions'].includes(view) && !user)) return;
     const controller = new AbortController();
-    setFeed(previous => ({ ...(previous.key === feedKey ? previous : emptyFeed), key: feedKey, loading: true, error: '' }));
+    setFeed(previous => ({ ...(previous.key === feedKey ? previous : feedCache.current.get(feedKey)??emptyFeed), key: feedKey, loading: true, error: '' }));
     const timer = setTimeout(() => {
       const filters = Object.entries(JSON.parse(criteria)).filter(([, value]) => value !== undefined);
       api('/api/posts?' + new URLSearchParams([...filters, ['page', String(requestPage)]]), { signal: controller.signal }).then(result => {
@@ -81,7 +89,8 @@ export default function App() {
       }).catch(e => { if (!controller.signal.aborted) setFeed(previous => ({ ...previous, loading: false, error: e.message })); });
     }, view === 'search' ? 250 : 0);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [view, criteria, feedKey, requestPage, version, subscriptionVersion, taxonomyVersion]);
+  }, [view, criteria, feedKey, requestPage, version, subscriptionVersion, taxonomyVersion,authChecking,articleId]);
+  useEffect(()=>{if(feed.key&&!feed.loading&&!feed.error){feedCache.current.set(feed.key,feed);while(feedCache.current.size>12)feedCache.current.delete(feedCache.current.keys().next().value);}},[feed]);
   useEffect(() => {
     if (view !== 'search') return;
     const controller = new AbortController(); setSearchWriters({ writers: [], loading: true, error: '' });
@@ -138,13 +147,14 @@ export default function App() {
   async function logout(){
     if(loggingOut)return;
     if(dirty&&!window.confirm('저장하지 않은 변경 사항이 있습니다. 로그아웃할까요?'))return;
-    setLoggingOut(true);
-    try{await api('/api/auth/logout',jsonRequest('POST',{}));setUser(null);setDirty(false);setEditing(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',location.pathname+location.search);refreshContent();setMessage('로그아웃했습니다.');}
+    authRequest.current++;setLoggingOut(true);
+    try{await api('/api/auth/logout',jsonRequest('POST',{}));clearDraftBackups(user?.id);setApiScope('anonymous');feedCache.current.clear();setAuthChecking(false);setUser(null);setDirty(false);setEditing(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',location.pathname+location.search);refreshContent();setMessage('로그아웃했습니다.');}
     catch(e){setMessage(e.message);}finally{setLoggingOut(false);}
   }
-  function accountDeleted(id){
+  function clearDraftBackups(id){try{for(const key of Object.keys(localStorage))if(key.startsWith('ark-draft:'+id+':'))localStorage.removeItem(key);}catch{}}
+  function accountDeleted(id){authRequest.current++;setApiScope('anonymous');feedCache.current.clear();
     try{for(const key of Object.keys(localStorage))if(key.startsWith('ark-draft:'+id+':'))localStorage.removeItem(key);sessionStorage.removeItem('ark-auth-return-post');}catch{}
-    setUser(null);setSignup(null);setDirty(false);setEditing(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',location.pathname+location.search);refreshContent();setMessage('계정을 삭제했습니다.');
+    setAuthChecking(false);setUser(null);setSignup(null);setDirty(false);setEditing(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',location.pathname+location.search);refreshContent();setMessage('계정을 삭제했습니다.');
   }
   function restoreBrowse(snapshot){
     setView(snapshot.view??'home');setCategory(snapshot.category??'all');setAuthor(snapshot.author??null);setQuery(snapshot.query??'');setTopicId(snapshot.topicId??'all');setRequestPage(snapshot.requestPage??0);setWriterFilters(snapshot.writerFilters??{category:null,tag:null});readerScroll.current=snapshot.scrollTop??0;
@@ -178,6 +188,7 @@ export default function App() {
     try {
       const result = await api('/api/posts/' + id + '/' + kind, jsonRequest('PUT', { active: !(kind === 'like' ? post.liked : post.saved) }));
       if(activeUserId.current!==user.id)return;
+      for(const [key,value] of feedCache.current)feedCache.current.set(key,{...value,posts:value.posts.map(p=>p.id===id?{...p,...result.post}:p)});
       setFeed(previous => ({ ...previous, posts: previous.posts.map(p => p.id === id ? { ...p, ...result.post } : p) }));
       setArticle(previous => previous?.id === id ? { ...previous, ...result.post } : previous);
       if (kind === 'bookmark') { setMessage(result.post.saved ? '저장한 포스트에 담았어요.' : '저장한 포스트에서 삭제했어요.'); if (view === 'saved' && !result.post.saved) refreshContent(); }
@@ -215,9 +226,9 @@ export default function App() {
 
   return <>
     <AppShell reading={Boolean(articleId)} onBack={returnFromArticle} reader={<ArticlePage post={article} loading={articleLoading} error={articleError} topics={topics} user={user} pending={pending} onRetry={()=>openArticle(articleId,false)} onEdit={editPost} onLogin={()=>{setAuthOpen(true);refreshAuth();}}/>} view={view} title={title} query={query} category={category} onSearch={e => { setQuery(e.target.value); setRequestPage(0); }} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} onSettings={setSettings} onLogout={logout} loggingOut={loggingOut} onAdmin={()=>navigate('admin')} sidebarRefresh={version+':'+subscriptionVersion} onLogin={()=>setAuthOpen(true)} user={user} onProfile={() => { if(user)openWriter(user.id,user.name);else{setAuthOpen(true);refreshAuth();} }}>
-      {view!=='author' && catalogError && <p className="auth-error" role="alert">필자와 주제를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
+      {view!=='author' && catalogError && <p className="auth-error" role="alert">분류 정보를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {browsing.includes(view) && currentFeed.error && <p className="auth-error" role="alert">{currentFeed.error} <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
-      {view==='author'&&author?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='clear'?{category:null,tag:null}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={account=>{setUser(account);setAuthor({id:account.id,name:account.name});refreshContent();}} onShare={async id=>{try{await navigator.clipboard.writeText(location.origin+'/#writer-'+id);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
+      {view==='author'&&author?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='clear'?{category:null,tag:null}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={account=>{setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);setAuthor({id:account.id,name:account.name});refreshContent();}} onShare={async id=>{try{await navigator.clipboard.writeText(location.origin+'/#writer-'+id);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
       {view!=='author' && browsing.includes(view) && currentFeed.posts.length < currentFeed.total && <button className="pill load-more" disabled={currentFeed.loading} onClick={() => { setRequestPage(currentFeed.page + 1); if (currentFeed.error) setVersion(v => v + 1); }}>{currentFeed.loading ? '불러오는 중…' : '포스트 더 보기'}</button>}
     </AppShell>
     <SettingsDialog onDeleted={accountDeleted} onRoleChanged={refreshAuth} section={settings} onClose={()=>setSettings(null)} user={user} onLogin={()=>setAuthOpen(true)}/>

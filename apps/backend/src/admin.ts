@@ -20,8 +20,8 @@ export async function handleAdmin(request: Request, env: AuthEnv) {
   const body = await readBody(request);
   if (!['reader', 'author', 'admin'].includes(String(body.role)) || typeof body.disabled !== 'boolean' || typeof body.version !== 'number' || !Number.isSafeInteger(body.version)) throw new HttpError(400, '권한과 계정 상태를 확인해 주세요.');
   if (match[1] === actor.id) throw new HttpError(400, '본인의 권한이나 이용 상태는 변경할 수 없습니다.');
-  const updated = await env.DB.prepare("UPDATE auth_users SET role=?,disabled=?,version=version+1 WHERE id=? AND version=? AND (role!='admin' OR (?='admin' AND ?=0) OR EXISTS(SELECT 1 FROM auth_users a WHERE a.id!=auth_users.id AND a.role='admin' AND a.disabled=0)) AND EXISTS(SELECT 1 FROM auth_users a WHERE a.id=? AND a.role='admin' AND a.disabled=0) RETURNING *").bind(body.role, body.disabled ? 1 : 0, match[1], body.version, body.role, body.disabled ? 1 : 0, actor.id).first<UserRow>();
+  const updated = await env.DB.prepare("UPDATE auth_users SET role=?,disabled=?,version=version+1,login_version=login_version+1 WHERE id=? AND version=? AND (role!='admin' OR (?='admin' AND ?=0) OR EXISTS(SELECT 1 FROM auth_users a WHERE a.id!=auth_users.id AND a.role='admin' AND a.disabled=0)) AND EXISTS(SELECT 1 FROM auth_users a WHERE a.id=? AND a.role='admin' AND a.disabled=0) RETURNING *").bind(body.role, body.disabled ? 1 : 0, match[1], body.version, body.role, body.disabled ? 1 : 0, actor.id).first<UserRow>();
   if (!updated) throw new HttpError(409, '명단이 변경되었거나 마지막 관리자입니다. 새로고침 후 다시 확인해 주세요.');
-  if (updated.disabled) await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id=?').bind(updated.id).run();
+  await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id=?').bind(updated.id).run();
   return json({ user: { id: updated.id, email: updated.email, name: updated.name, role: updated.role, disabled: updated.disabled, version: updated.version, created_at: updated.created_at } });
 }

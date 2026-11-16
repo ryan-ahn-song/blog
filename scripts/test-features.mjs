@@ -49,6 +49,9 @@ try {
   await migrate('0011_signup_consent.sql');
   await migrate('0012_writer_applications.sql');
   await migrate('0013_account_controls.sql');
+  await migrate('0014_security_performance.sql');
+  await migrate('0015_media_references.sql');
+  await migrate('0016_session_inactivity.sql');
   assert.deepEqual(JSON.parse((await db.prepare("SELECT topic_ids FROM posts WHERE id='pre-migration'").first()).topic_ids),['tech']);
   const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site, headers = {} } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
   const sessionCookie = r => { const match = r.headers.get('set-cookie')?.match(/__Host-ark_session=[a-f0-9]{64}/); assert.ok(match); return match[0]; };
@@ -72,7 +75,7 @@ try {
     }
     assert.equal(new URL(response.headers.get('location')).searchParams.get('auth'),'success');return sessionCookie(response);
   }
-  const readerCookie=await login('reader@example.invalid','google-reader');
+  let readerCookie=await login('reader@example.invalid','google-reader');
   const reader=(await (await call('/api/auth/me',{cookie:readerCookie})).json()).user;
   assert.equal(reader.role,'reader');
   assert.equal((await call('/api/auth/account')).status,401);
@@ -92,7 +95,8 @@ try {
   assert.equal((await call('/api/admin/users/'+admin.id,{method:'PATCH',cookie:adminCookie,body:{role:'reader',disabled:false,version:0}})).status,400);
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'author',disabled:false,version:0},csrf:'https://attacker.invalid'})).status,403);
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'author',disabled:false,version:0}})).status,200);
-  assert.equal((await (await call('/api/auth/me',{cookie:readerCookie})).json()).user.role,'author');
+  assert.equal((await (await call('/api/auth/me',{cookie:readerCookie})).json()).user,null,'Role changes revoke old sessions');
+  readerCookie=await login('reader@example.invalid','google-reader');
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'admin',disabled:false,version:0}})).status,409);
   const form={title:'실제 글 작성 검사',summary:'요약',body:'첫 문단\n\n두 번째 문단 <script>alert(1)</script>',category:'tech',topic_ids:['tech','frontend'],status:'draft',image_key:null};
   assert.equal((await call('/api/posts',{method:'POST',cookie:readerCookie,body:{...form,category:'life'}})).status,400);
@@ -233,8 +237,8 @@ try {
   const png=new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6hS0AAAAASUVORK5CYII=','base64'));
   const avatarResponse=await call('/api/media?purpose=avatar',{method:'POST',cookie:otherCookie,type:'image/png',body:png});assert.equal(avatarResponse.status,201);const avatar=await avatarResponse.json();
   const coverResponse=await call('/api/media?purpose=cover',{method:'POST',cookie:otherCookie,type:'image/png',body:png});assert.equal(coverResponse.status,201);const cover=await coverResponse.json();
-  const avatarRead=await call('/api/media/'+avatar.key);assert.equal(avatarRead.status,302);assert.equal(avatarRead.headers.get('location'),'https://media.21stark.dev/'+avatar.key);
-  assert.equal((await call('/api/media/'+avatar.key,{site:'http://127.0.0.1:8787'})).status,200);
+  const avatarRead=await call('/api/media/'+avatar.key,{cookie:otherCookie});assert.equal(avatarRead.status,200);assert.equal(avatarRead.headers.get('cache-control'),'private, no-store');
+  assert.equal((await call('/api/media/'+avatar.key,{site:'http://127.0.0.1:8787'})).status,404,'Unattached profile upload is private');
   assert.equal((await call('/api/media?purpose=avatar',{method:'POST',type:'image/png',body:png})).status,401);
   assert.equal((await call('/api/media?purpose=avatar',{method:'POST',cookie:otherCookie,type:'image/png',body:png,csrf:'https://attacker.invalid'})).status,403);
   const otherProfile=(await (await call('/api/auth/me',{cookie:otherCookie})).json()).user;
@@ -244,7 +248,7 @@ try {
   assert.equal((await changeProfile({avatar_key:'profiles/'+other.id+'/avatar-missing.png'})).status,400,'Missing objects cannot be attached');
   assert.equal((await changeProfile({avatar_key:avatar.key,cover_key:cover.key})).status,200);
   const publicWriter=(await (await call('/api/writers/'+other.id)).json()).writer;
-  assert.equal(publicWriter.avatar_url,'https://media.21stark.dev/'+avatar.key);assert.equal(publicWriter.cover_url,'https://media.21stark.dev/'+cover.key);
+  assert.equal(publicWriter.avatar_url,'/api/media/'+avatar.key);assert.equal(publicWriter.cover_url,'/api/media/'+cover.key);
   for(const field of ['email','role','version','password_hash','avatar_key','cover_key'])assert.equal(field in publicWriter,false,'Public profile excludes '+field);
   const profilePostResponse=await call('/api/posts',{method:'POST',cookie:otherCookie,body:{...form,status:'published'}});assert.equal(profilePostResponse.status,201);const profilePost=(await profilePostResponse.json()).post;
   assert.equal((await (await call('/api/posts?author='+other.id)).json()).posts[0].writer.avatar_url,publicWriter.avatar_url);
@@ -255,8 +259,8 @@ try {
   assert.equal((await (await call('/api/writers/'+other.id)).json()).writer.cover_url,null);
   const upload=await call('/api/media',{method:'POST',cookie:readerCookie,type:'image/png',body:png});assert.equal(upload.status,201);const image=await upload.json();assert.ok(image.key.startsWith('posts/'+reader.id+'/'));
   assert.equal(image.source,'/api/media/'+image.key);
-  const imageRead=await call(image.source);assert.equal(imageRead.status,302);assert.equal(imageRead.headers.get('location'),'https://media.21stark.dev/'+image.key);
-  const localImage=await call(image.source,{site:'http://127.0.0.1:8787'});assert.equal(localImage.status,200);assert.equal(localImage.headers.get('content-type'),'image/png');assert.deepEqual(new Uint8Array(await localImage.arrayBuffer()),png,'Local R2 serves the uploaded bytes');
+  const imageRead=await call(image.source);assert.equal(imageRead.status,404,'Unpublished media requires its owner');assert.equal((await call(image.source,{cookie:readerCookie})).status,200);
+  const localImage=await call(image.source,{site:'http://127.0.0.1:8787',cookie:readerCookie.replace('__Host-ark_session','ark_session')});assert.equal(localImage.status,200);assert.equal(localImage.headers.get('content-type'),'image/png');assert.deepEqual(new Uint8Array(await localImage.arrayBuffer()),png,'Local R2 serves the uploaded bytes');
   const inlineDoc=[{id:'inline-photo',type:'image',props:{url:image.url,name:'본문 이미지.png',caption:'저장된 캡션',previewWidth:480},children:[]}];
   const inlineForm={...form,body:'![본문 이미지]('+image.url+')',body_format:'markdown',body_doc:inlineDoc};
   assert.equal((await call('/api/posts',{method:'POST',cookie:otherCookie,body:inlineForm})).status,403,'Another author cannot attach a managed image they do not own');
@@ -280,7 +284,8 @@ try {
   const adminRemovable=(await (await call('/api/posts',{method:'POST',cookie:otherCookie,body:form})).json()).post;
   assert.equal((await call('/api/posts/'+adminRemovable.id,{method:'DELETE',cookie:adminCookie,body:{revision:adminRemovable.revision}})).status,200,'Admins can delete a post using the same revision check');
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'reader',disabled:false,version:1}})).status,200);
-  assert.equal((await call('/api/posts',{method:'POST',cookie:readerCookie,body:form})).status,403);
+  assert.equal((await call('/api/posts',{method:'POST',cookie:readerCookie,body:form})).status,401);
+  readerCookie=await login('reader@example.invalid','google-reader');
   assert.equal((await call('/api/media?purpose=avatar',{method:'POST',cookie:readerCookie,type:'image/png',body:png})).status,201,'Reader avatars do not grant post-writing permission');
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'reader',disabled:true,version:2}})).status,200);
   assert.equal((await (await call('/api/auth/me',{cookie:readerCookie})).json()).user,null);

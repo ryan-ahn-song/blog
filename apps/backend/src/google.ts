@@ -2,10 +2,10 @@ import { beginSignup } from './signup';
 import { randomBytes, createHash } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { HttpError, json } from './http';
-import { type AuthEnv, type UserRow, now, digest, cookie, readCookie, createSession, currentUser, local, limited } from './session';
+import { type AuthEnv, type UserRow, now, digest, cookie, readCookie, createSession, currentUser, local, limited, linkIdentity } from './session';
 
 const keys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-type Flow = { nonce: string; verifier: string; origin: string; link_user_id: string | null; link_version:number; expires_at: number };
+type Flow = { purpose:string; nonce: string; verifier: string; origin: string; link_user_id: string | null; link_version:number; expires_at: number };
 function originFor(request: Request, env: AuthEnv) {
   const url = new URL(request.url);
   if (local(request)) {
@@ -29,9 +29,11 @@ export async function handleGoogle(request: Request, env: AuthEnv): Promise<Resp
     if (await limited(env.DB, digest('oauth:' + (request.headers.get('CF-Connecting-IP') || 'local')), 40)) throw new HttpError(429, '로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.');
     const state = randomBytes(32).toString('hex'), nonce = randomBytes(32).toString('hex'), verifier = randomBytes(48).toString('base64url');
     const user = await currentUser(request, env);
+    const purpose=url.searchParams.get('reauth')==='1'?'reauth':'link';
+    if(purpose==='reauth'&&!user)throw new HttpError(401,'로그인이 필요합니다.');
     await env.DB.batch([
       env.DB.prepare('DELETE FROM auth_oauth_states WHERE expires_at<=?').bind(now()),
-      env.DB.prepare('INSERT INTO auth_oauth_states(state_hash,nonce,verifier,origin,link_user_id,expires_at,link_version) VALUES(?,?,?,?,?,?,?)').bind(digest(state), nonce, verifier, origin, user?.id ?? null, now() + 600,user?.login_version??0),
+      env.DB.prepare('INSERT INTO auth_oauth_states(state_hash,nonce,verifier,origin,link_user_id,expires_at,link_version,purpose) VALUES(?,?,?,?,?,?,?,?)').bind(digest(state), nonce, verifier, origin, user?.id ?? null, now() + 600,user?.login_version??0,purpose),
     ]);
     const authorize = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authorize.search = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: origin + '/api/auth/callback/google', response_type: 'code', scope: 'openid email profile', state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', prompt: 'select_account' }).toString();
@@ -56,8 +58,8 @@ export async function handleGoogle(request: Request, env: AuthEnv): Promise<Resp
     if (flow.link_user_id) {
       const signedIn = await currentUser(request, env);
       if (!signedIn || signedIn.id !== flow.link_user_id || signedIn.login_version!==flow.link_version || signedIn.email.toLowerCase() !== email || (user && user.id !== signedIn.id)) return redirect(request, origin, 'auth_error=link');
-      if (!user) {const linked=await env.DB.prepare('INSERT INTO auth_google_accounts(subject,user_id) SELECT ?,id FROM auth_users WHERE id=? AND login_version=? AND disabled=0 RETURNING user_id').bind(payload.sub,signedIn.id,flow.link_version).first();if(!linked)return redirect(request,origin,'auth_error=link');}
-      user = signedIn;
+      if(flow.purpose==='reauth'&&!user)return redirect(request,origin,'auth_error=link');
+      user = user ? signedIn : await linkIdentity(env,signedIn,'google',payload.sub);
     } else if (!user) {
       // Never link a password account merely because Google returns the same email.
       if (await env.DB.prepare('SELECT id FROM auth_users WHERE email=?').bind(email).first()) return redirect(request, origin, 'auth_error=existing');
@@ -65,7 +67,7 @@ export async function handleGoogle(request: Request, env: AuthEnv): Promise<Resp
       return beginSignup(request,env,origin,'google',payload.sub,email,name);
     }
     if (!user || user.disabled) return redirect(request, origin, 'auth_error=disabled');
-    return redirect(request, origin, 'auth=success', await createSession(request, env, user.id,user.login_version));
+    return redirect(request, origin, flow.purpose==='reauth'?'auth=reauth':'auth=success', await createSession(request, env, user.id,user.login_version));
   } catch {
     console.error('Google authentication failed');
     return redirect(request, origin, 'auth_error=google');

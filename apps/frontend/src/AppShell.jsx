@@ -31,7 +31,7 @@ return <div onClick={onAction}>
       <section className="search-panel" hidden={reading||view !== "search"} aria-label="검색 및 주제 탐색"><div className="explore-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><label className="sr-only" htmlFor="search">필자 또는 주제 검색</label><input type="search" id="search" placeholder="필자 또는 주제 검색" autoComplete="off" value={query} onChange={onSearch} ref={searchRef}/><button id="clear-search" aria-label="검색어 지우기" hidden={!query}>×</button></div><div className="explore-chips" role="group" aria-label="주제 선택">{chips}</div></section>
       <div className="content-columns" hidden={reading}>
         <section id="feed" tabIndex={-1} aria-label="최신 포스트 피드" aria-live="polite">{children}</section>
-        <CommunitySidebar user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>
+        {!reading&&['home','search','saved','subscriptions','writers'].includes(view)&&<CommunitySidebar user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>}
       </div>
     </div>
   </main>
