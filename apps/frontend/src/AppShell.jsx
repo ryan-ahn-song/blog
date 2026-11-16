@@ -1,8 +1,9 @@
 import { assetUrl } from './assets.js';
 import CommunitySidebar from './CommunitySidebar';
-export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,children,user,onProfile,sidebarRefresh,onLogin}) {
+import MoreMenu from './MoreMenu';
+export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,children,user,onProfile,sidebarRefresh,onLogin,onSettings,onLogout,loggingOut,onAdmin,reading,reader,onBack}) {
 return <div onClick={onAction}>
-  <a className="skip" href="#feed">최신 글로 건너뛰기</a>
+  <a className="skip" href={reading?'#article-reader':'#feed'} onClick={event=>{event.preventDefault();const target=document.getElementById(reading?'article-reader':'feed');target?.focus({preventScroll:true});target?.scrollIntoView();}}>{reading?'본문으로 건너뛰기':'최신 글로 건너뛰기'}</a>
   <aside className="rail" aria-label="사이드 메뉴">
     <a className="rail-logo" href="./" aria-label="21st ARK 홈"><img src={assetUrl('logo_alone_light-1.svg')} alt="21st ARK" /></a>
     <nav aria-label="주요 메뉴">
@@ -20,15 +21,16 @@ return <div onClick={onAction}>
         </div>
       </>}
     </nav>
-    <button className="rail-button rail-bottom" data-view="settings" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+    <MoreMenu user={user} onSettings={onSettings} onLogin={onLogin} onAdmin={onAdmin} onLogout={onLogout} loggingOut={loggingOut}/>
     <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={onProfile} aria-label={user?'내 프로필':'로그인'} title={user?user.name:'로그인'}>{user?<span>{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
   </aside>
-  <main className={`surface ${view === "search" ? "exploring" : ""} ${['write','my-posts','admin'].includes(view) ? 'workspace' : ''} ${view === 'author' ? 'author-view' : ''} ${view === 'write' ? 'writing-workspace' : ''}`} id="main" ref={surfaceRef}>
+  <main className={`surface ${!reading&&view === "search" ? "exploring" : ""} ${!reading&&['write','my-posts','admin'].includes(view) ? 'workspace' : ''} ${!reading&&view === 'author' ? 'author-view' : ''} ${!reading&&view === 'write' ? 'writing-workspace' : ''} ${reading?'reading-view':''}`} id="main" ref={surfaceRef}>
     <div className="layout">
-      <header className="page-header"><h1 id="page-title">{title}</h1><div className="top-actions"><button className="pill" data-view="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg>글 검색</button>{user && ['author','admin'].includes(user.role) && <button className="pill" data-view="my-posts">나의 글</button>}{user&&['author','admin'].includes(user.role)&&<button className="pill primary" data-view="write">글 쓰기</button>}</div></header>
-      <section className="search-panel" hidden={view !== "search"} aria-label="검색 및 주제 탐색"><div className="explore-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><label className="sr-only" htmlFor="search">필자 또는 주제 검색</label><input type="search" id="search" placeholder="필자 또는 주제 검색" autoComplete="off" value={query} onChange={onSearch} ref={searchRef}/><button id="clear-search" aria-label="검색어 지우기" hidden={!query}>×</button></div><div className="explore-chips" role="group" aria-label="주제 선택">{chips}</div></section>
-      <div className="content-columns">
-        <section id="feed" aria-label="최신 글 피드" aria-live="polite">{children}</section>
+      <header className="page-header">{reading?<div className="reader-page-heading"><button className="reader-back" aria-label="이전 화면으로 돌아가기" title="뒤로 가기" onClick={onBack}>←</button><h1 id="page-title">글 읽기</h1></div>:<h1 id="page-title">{title}</h1>}<div className="top-actions"><button className="pill" data-view="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg>글 검색</button>{user && ['author','admin'].includes(user.role) && <button className="pill" data-view="my-posts">나의 글</button>}{user&&['author','admin'].includes(user.role)&&<button className="pill primary" data-view="write">글 쓰기</button>}</div></header>
+      {reading&&<section id="article-reader" tabIndex={-1} aria-label="글 읽기">{reader}</section>}
+      <section className="search-panel" hidden={reading||view !== "search"} aria-label="검색 및 주제 탐색"><div className="explore-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><label className="sr-only" htmlFor="search">필자 또는 주제 검색</label><input type="search" id="search" placeholder="필자 또는 주제 검색" autoComplete="off" value={query} onChange={onSearch} ref={searchRef}/><button id="clear-search" aria-label="검색어 지우기" hidden={!query}>×</button></div><div className="explore-chips" role="group" aria-label="주제 선택">{chips}</div></section>
+      <div className="content-columns" hidden={reading}>
+        <section id="feed" tabIndex={-1} aria-label="최신 글 피드" aria-live="polite">{children}</section>
         <CommunitySidebar user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>
       </div>
     </div>

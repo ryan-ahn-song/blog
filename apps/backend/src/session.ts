@@ -3,7 +3,7 @@ import { HttpError } from './http';
 import { mediaUrl } from './media';
 export type Role = 'reader' | 'author' | 'admin';
 export type UserRow = { id: string; email: string; name: string; bio: string; avatar_key:string|null; cover_key:string|null; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number };
-export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
+export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
 export const now = () => Math.floor(Date.now() / 1000);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export function local(request: Request) { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(request.url).hostname); }

@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest } from './api';
 import BlockCanvas from './BlockCanvas';
+import {WriterTaxonomyFields} from './WriterTaxonomy';
 const blank = { title: '', summary: '', body: '', body_doc: null, body_format: 'markdown', category: 'tech', image_key: null, image: null, status: 'draft' };
+const withLabels=value=>({...blank,...value,writer_category_id:value?.writer_category_id??value?.writer_category?.id??null,writer_tag_ids:value?.writer_tag_ids??value?.writer_tags?.map(tag=>tag.id)??[]});
 export default function Editor({ user, post, topics, onSaved, onDirty }) {
   const [record, setRecord] = useState(post);
   const storageKey = 'ark-draft:' + user.id + ':' + (post?.id || 'new');
-  const [restored]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));if(!saved||(post&&saved.revision!==post.revision))return null;if(!post&&!saved.title?.trim()&&!saved.summary?.trim()&&!saved.body?.trim()&&!saved.image_key&&(!saved.category||saved.category==='tech')&&(!saved.topic_ids||saved.topic_ids.every(id=>id==='tech'))){localStorage.removeItem(storageKey);return null;}return saved;}catch{return null;}});
-  const [form, setForm] = useState(() => restored?{...blank,...restored,body_format:restored.body_format??'plain'}:{...blank,...post});
+  const [restored]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));if(!saved||(post&&saved.revision!==post.revision))return null;if(!post&&!saved.title?.trim()&&!saved.summary?.trim()&&!saved.body?.trim()&&!saved.image_key&&!saved.writer_category_id&&!saved.writer_tag_ids?.length&&(!saved.category||saved.category==='tech')&&(!saved.topic_ids||saved.topic_ids.every(id=>id==='tech'))){localStorage.removeItem(storageKey);return null;}return saved;}catch{return null;}});
+  const [form, setForm] = useState(() => restored?{...withLabels(restored),body_format:restored.body_format??'plain'}:withLabels(post));
   const initialValue=useRef(form),canvas=useRef(null),uploadQueue=useRef(Promise.resolve());
   const [dirty, setDirty] = useState(Boolean(restored)), [pending, setPending] = useState(false), [uploads, setUploads] = useState(0);
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [taxonomyBusy,setTaxonomyBusy]=useState(false);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty, onDirty]);
   useEffect(() => {
     if (!dirty) return;
@@ -41,32 +44,31 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
     if(!value.body.trim()||value.body.length>80000){setError('본문을 80,000자 이내로 입력해 주세요.');return;}
     setPending(true);
     try {
-      const result = await api('/api/posts' + (record ? '/' + record.id : ''), jsonRequest(record ? 'PUT' : 'POST', { title:value.title,summary:value.summary,body:value.body,body_doc:value.body_doc,body_format:value.body_format,category:value.category,topic_ids:value.topic_ids??[value.category],image_key:value.image_key,revision:record?.revision,status }));
-      setRecord(result.post); setForm(result.post); setDirty(false);
+      const result = await api('/api/posts' + (record ? '/' + record.id : ''), jsonRequest(record ? 'PUT' : 'POST', { title:value.title,summary:value.summary,body:value.body,body_doc:value.body_doc,body_format:value.body_format,category:value.category,topic_ids:value.topic_ids??[value.category],image_key:value.image_key,writer_category_id:value.writer_category_id,writer_tag_ids:value.writer_tag_ids,revision:record?.revision,status }));
+      setRecord(result.post); setForm(withLabels(result.post)); setDirty(false);
       try { localStorage.removeItem(storageKey); } catch {}
       setNotice(status === 'published' ? '업로드했습니다. 홈에서 글을 읽을 수 있어요.' : '임시저장했습니다. 내 글 관리에서 이어 쓸 수 있어요.');
       onSaved(result.post);
     } catch (e) { setError(e.message); } finally { setPending(false); }
   }
-  const disabled=pending||uploads>0,categories=topics.filter(t=>t.id===t.category),selectedTopics=form.topic_ids??[form.category];
-  function changeCategory(category){setForm(f=>({...f,category,topic_ids:[category]}));setDirty(true);setNotice('');}
-  function changeTopic(id,checked){change('topic_ids',checked?[...new Set([...selectedTopics,id])]:selectedTopics.filter(value=>value!==id));}
+  const disabled=pending||uploads>0||taxonomyBusy,categories=topics,selectedTopic=(form.topic_ids??[]).find(id=>id!==form.category&&topics.some(t=>t.id===id))??form.category,writerId=record?.writer?.id??record?.author_id??user.id;
+  function changeCategory(id){const topic=topics.find(t=>t.id===id);if(!topic)return;setForm(f=>({...f,category:topic.category,topic_ids:[...new Set([topic.category,topic.id])]}));setDirty(true);setNotice('');}
   return <section className="editor split-editor" aria-label="글 작성">
     <aside className="editor-details" aria-label="글 설정">
-      <div className="editor-details-heading"><div><h2>{record?'글 편집':'새로운 글'}</h2></div><span className="status-tag">{record?.status==='published'?'업로드한 글':'초안'}</span></div>
+      <div className="editor-details-heading"><h2>{record?'글 편집':'새로운 글'}</h2></div>
       <form id="post-editor" onSubmit={event=>{event.preventDefault();save('published');}}><fieldset disabled={disabled}>
-        <label htmlFor="post-category">분류</label><select id="post-category" value={form.category} disabled={!categories.length} onChange={event=>changeCategory(event.target.value)}>{categories.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
-        <div className="editor-topics" role="group" aria-label="세부 주제">{topics.filter(t=>t.category===form.category&&t.id!==t.category).map(t=><label key={t.id}><input type="checkbox" checked={selectedTopics.includes(t.id)} onChange={event=>changeTopic(t.id,event.target.checked)}/>{t.name}</label>)}</div>
+        <label htmlFor="post-category">전체 분류</label><select id="post-category" value={selectedTopic} disabled={!categories.length} onChange={event=>changeCategory(event.target.value)}>{categories.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
         <div className="editor-field-heading"><label htmlFor="post-title">제목</label><span>{form.title.length}/160</span></div><textarea className="editor-title" id="post-title" rows={2} placeholder="글의 제목" required maxLength={160} value={form.title} onChange={event=>change('title',event.target.value)}/>
         <div className="editor-field-heading"><label htmlFor="post-summary">짧은 소개</label><span>선택 · {form.summary.length}/280</span></div><textarea id="post-summary" rows={3} maxLength={280} placeholder="어떤 내용의 글인가요?" value={form.summary} onChange={event=>change('summary',event.target.value)}/>
+        <WriterTaxonomyFields writerId={writerId} canManage={writerId===user.id} value={form} disabled={disabled} onBusy={setTaxonomyBusy} onChange={value=>{setForm(previous=>({...previous,...value}));setDirty(true);setNotice('');}}/>
         <div className="cover-label"><label htmlFor="post-cover">대표 이미지 <span>선택</span></label>{form.image&&<button type="button" className="text-button" onClick={()=>{change('image_key',null);change('image',null);}}>제거</button>}</div>
-        {form.image&&<img className="editor-cover" src={form.image} alt="업로드한 대표 이미지"/>}<label className="cover-upload-button" htmlFor="post-cover"><span>＋ {form.image?'이미지 변경':'이미지 추가'}</span><small>JPG, PNG, WebP · 최대 8MB</small><input className="sr-only" id="post-cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover}/></label>
+        {form.image&&<img className="editor-cover" src={form.image} alt="업로드한 대표 이미지"/>}<label className="cover-upload-button" htmlFor="post-cover"><span>＋ {form.image?'이미지 변경':'이미지 추가'}</span><small>권장 1600 × 900px · 16:9<br/>JPG, PNG, WebP · 최대 8MB</small><input className="sr-only" id="post-cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover}/></label>
       </fieldset></form>
-      <div className="editor-save-area"><div className="editor-save-state" role="status"><span className={dirty?'unsaved-dot':'saved-dot'}/>{!categories.length?'분류를 불러오는 중…':uploads?'이미지 업로드 중…':pending?'저장 중…':dirty?'저장하지 않은 변경 사항':record?'저장됨':'작성 준비 완료'}</div><p className="editor-body-count">본문 {form.body.length.toLocaleString()} / 80,000자</p>
+      <div className="editor-save-area">
         {error&&<p className="auth-error" role="alert">{error}</p>}{notice&&<p className="workspace-notice" role="status">{notice}</p>}
         <div className="editor-save-buttons"><button type="button" className="pill" disabled={disabled||!categories.length} onClick={()=>save('draft')}>{record?.status==='published'?'업로드 취소 · 임시저장':'임시저장'}</button><button type="button" className="pill primary" disabled={disabled||!categories.length} onClick={()=>save('published')}>{pending?'저장 중…':record?.status==='published'?'수정 사항 업로드':'업로드하기'}</button></div>
       </div>
     </aside>
-    <BlockCanvas ref={canvas} initialValue={initialValue.current} title={form.title} onChange={changeDocument} uploadFile={uploadInline} disabled={pending}/>
+    <BlockCanvas ref={canvas} initialValue={initialValue.current} title={form.title} bodyLength={form.body.length} onChange={changeDocument} uploadFile={uploadInline} disabled={pending}/>
   </section>;
 }

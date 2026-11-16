@@ -1,33 +1,8 @@
-# 필자 로그인
+# 로그인과 권한
 
-왼쪽 설정 버튼 아래의 프로필 아이콘으로 로그인 창을 엽니다. 로그인 후에는 이름·이메일·역할과 로그아웃 버튼을 표시합니다. 모바일에서는 하단 메뉴 오른쪽에 프로필을 표시합니다.
+로그인은 Google과 GitHub OAuth로 제공합니다. 이메일·비밀번호 로그인은 종료되었으며 `POST /api/auth/login`은 410을 반환합니다. 기존 비밀번호 해시는 마이그레이션 호환을 위해 보존되지만 인증에 사용하지 않습니다. 계정 권한은 OAuth 로그인과 별개로 D1에서 관리합니다.
 
-로그인 상태는 D1 세션과 HttpOnly 쿠키로 7일간 유지됩니다. 운영 쿠키는 Secure, SameSite=Lax, __Host- 접두사를 사용합니다. 세션 토큰 원문이나 비밀번호는 D1에 저장하지 않습니다. 비밀번호는 scrypt(N=16384, r=8, p=5)로 해시하고 세션 토큰은 SHA-256 해시만 저장합니다. 로그인·로그아웃 POST는 Origin을 검사하며 로그인 실패 횟수는 D1에서 제한합니다.
-
-## 로컬 계정 등록
-
-```sh
-npm run db:migrate:local
-npm run auth:create-user -- --local --admin
-```
-
-이메일, 표시 이름, 비밀번호를 터미널에서 입력합니다. 비밀번호 입력은 화면에 표시하지 않으며 명령 인자로 받지 않습니다. 12–256자 비밀번호를 사용합니다. `--admin`을 생략하면 필자 계정입니다. 이미 있는 이메일을 덮어쓰지 않습니다. 공개 회원가입과 비밀번호 재설정·이메일 전송은 구현하지 않았습니다.
-
-## 운영 계정 등록
-
-백엔드 배포 명령은 D1 마이그레이션을 먼저 적용합니다. Cloudflare 빌드 토큰에 D1 쓰기 권한이 필요합니다. 운영 계정은 Cloudflare에 로그인한 개발자 터미널에서 아래 명령으로 만듭니다.
-
-```sh
-npm run auth:create-user -- --remote --admin
-```
-
-비밀번호는 채팅이나 GitHub에 올리지 않습니다. 운영용 기본 계정·공용 비밀번호는 만들지 않았습니다. 필자를 추가할 때는 동일 명령에서 `--admin`을 생략합니다. 로컬과 운영 D1 계정은 별개입니다.
-
-## 검증
-
-`npm run test:auth`는 실제 workerd와 격리된 임시 D1으로 인증 흐름을 검사합니다. 운영 데이터나 기존 로컬 D1을 수정하지 않습니다.
-
-API: `GET /api/auth/me`, `POST /api/auth/login`, `POST /api/auth/logout`. 응답은 캐시하지 않습니다. 실제 글 작성 API는 후속 작업에서 세션과 역할을 검사하도록 연결해야 합니다.
+새 회원은 열람자로 가입합니다. `BOOTSTRAP_ADMIN_EMAIL`과 인증된 이메일이 같은 신규 계정은 최초 가입 시 관리자 권한을 받습니다. 기존 계정의 권한은 다시 승격하지 않습니다. 작성자 지정은 관리자 전용 멤버 관리에서 처리합니다. 로그인 세션은 해시로 D1에 저장하고, 브라우저 쿠키에는 HttpOnly·SameSite=Lax·운영 Secure를 적용합니다.
 
 ## Google 로그인과 권한
 
@@ -55,7 +30,7 @@ Google Cloud의 해당 웹 OAuth 클라이언트에 아래 주소들을 등록�
 
 새 Google 계정은 기본적으로 열람자입니다. `BOOTSTRAP_ADMIN_EMAIL`에 지정한 `ryansong0805@gmail.com`은 최초 가입 시에만 관리자 권한으로 생성됩니다. 기존 계정은 로그인할 때 권한을 다시 승격하지 않습니다. 최초 관리자 로그인 후 해당 환경 변수를 제거해도 계정 권한은 유지됩니다. 먼저 가입한 사용자를 자동으로 관리자로 지정하지 않습니다.
 
-기존 이메일/비밀번호 계정과 이메일이 같아도 자동 연결하지 않습니다. 해당 계정으로 먼저 로그인하고 프로필의 Google 계정 연결을 사용해야 하며, 동일 이메일의 Google 계정만 연결할 수 있습니다. 기존 계정이 최초 관리자 이메일을 사용한다면 기존 관리자로 로그인한 뒤 연결합니다.
+이메일이 같더라도 서로 다른 소셜 계정을 자동 연결하지 않습니다. 기존에 연결한 서비스로 로그인한 뒤 더 보기 → 계정 및 설정에서 같은 인증 이메일의 다른 계정을 연결합니다. 소셜 연결이 없는 기존 비밀번호 전용 계정은 이메일 로그인 종료로 관리자 확인을 거친 별도 복구가 필요합니다.
 
 작성자와 관리자는 로그인 직후 글쓰기 화면으로 이동합니다. 프로필과 상단 메뉴에서 글 쓰기·나의 글·멤버 관리에 접근할 수 있습니다. 권한은 모든 API 요청에서 D1 세션과 현재 사용자 정보로 다시 검사합니다. 관리자는 본인의 권한을 변경하거나 본인을 중지할 수 없으며, 마지막 활성 관리자 제거도 막습니다. 권한 변경은 다음 요청부터 적용되며, 이용 중지 시 세션을 폐기합니다. 명단은 30명 단위로 조회하고 관리자에게만 이메일을 표시합니다.
 
@@ -110,3 +85,84 @@ Migration `0006_writer_subscriptions.sql` stores subscriber/writer pairs with un
 `GET /api/subscriptions` is private to the session user and returns public writer details plus each subscribed writer's latest published post. It excludes suspended writers and never returns email or account roles. `GET /api/posts?subscribed=1` returns the existing paginated post feed restricted to the current user's subscriptions; drafts remain private. The right sidebar shows up to six subscribed writers, ordered by latest publication, and links to the full subscription feed. Subscribe controls live on other writers' profile pages.
 
 `GET /api/trending` ranks topics by published-post count over the past seven days, then by latest publication and catalog order. Drafts, older posts and suspended writers do not contribute. The page header now keeps search, the current writer's posts and writing actions; member management remains available through the existing account/admin flow. The old sidebar author directory and footer links/copyright block have been removed.
+
+
+## Author dashboard and reading analytics
+
+Migration `0007_post_reads.sql` stores a hashed visitor identity, Korean calendar date, timestamps and deduplicated view count per post/day. `POST /api/posts/:id/view` is called when the reader opens an uploaded post. It validates the request origin and JSON body, excludes drafts, suspended authors, the post's own author, obvious bots and DNT/GPC requests. Logged-in readers are identified by a hash of their account ID; other readers use a random first-party visitor cookie (`HttpOnly`, `SameSite=Lax`, secure `__Host-` cookie in production, rolling 30-day expiry). Raw IP addresses, user agents and emails are not stored in reading records. Anonymous visitors who later log in, or use different browsers, may be counted separately.
+
+Within each Korean calendar day, a repeat open by the same identity is counted as a new view after a gap of at least 30 minutes. The first open of a new day starts a new daily count. Reader counts are distinct identities, not completed-reading confirmations. Dashboard totals deduplicate identities across multiple posts, while the daily chart deduplicates within each Korean day. Tracking starts when this feature is enabled; earlier traffic is not reconstructed. Post deletion removes reading rows via the foreign key.
+
+`GET /api/author/dashboard` requires an active author/admin session and always scopes every query to that account's own posts, including for administrators. It provides 7/28/90-day reader/view totals, current saves and likes, a daily visitor series, draft/uploaded counts, searchable/status-filtered paginated posts, and each post's lifetime reader/save/like counts plus a 14-day sparkline. Saved counts use the existing account bookmarks and exclude suspended accounts. Status/search/order affect the post list; the summary and chart cover all of the author's posts. Historical readings remain visible when a post is moved back to draft.
+
+The dashboard loads when opened or its filters change, and offers a manual refresh control. It does not poll or refresh when returning to the tab. It cancels obsolete requests, does not overlap refresh requests and only renders data for the current session owner. The list has a full-post fetch before editing, preserving stored block documents. The duplicate new-post button has been removed.
+
+
+## Account menu and public profile statistics
+
+The rail More menu opens account settings, local reading preferences and help. Member management is visible to administrators only; the API still enforces administrator access. Sign-out uses the existing POST endpoint and preserves the unsaved-editor confirmation. The public profile no longer has a separate Account button.
+
+`GET /api/auth/account` requires a current session and returns only that account, Google/GitHub linkage and provider configuration availability. It does not return Google subjects, password hashes or credentials, and ignores caller-supplied account selectors.
+
+Public writer details include `total_views`, the sum of recorded views across currently published posts by that writer. Unpublished posts and raw reader identifiers are excluded from this public response. Counts begin with the first-party read tracking feature; historical traffic is not synthesized.
+
+Cover guidance is 1500 x 500 pixels (3:1), and avatar guidance is 400 x 400 pixels (1:1, shown in a circle). Both use existing authenticated R2 uploads and the revision-checked profile-save endpoint. Recommendations do not reject other dimensions. Reading font size, article width and reduced motion are stored in this browser only.
+
+
+## GitHub OAuth 설정
+
+GitHub OAuth App의 Homepage URL은 `https://21stark.dev`로 등록합니다. 콜백 URL은 필요한 환경을 모두 추가합니다.
+
+| 환경 | 서비스 URL | GitHub 콜백 | Google 콜백 |
+|---|---|---|---|
+| 로컬 | `http://127.0.0.1:3000` | `http://127.0.0.1:3000/api/auth/callback/github` | `http://127.0.0.1:3000/api/auth/callback/google` |
+| 운영 | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/github` | `https://21stark.dev/api/auth/callback/google` |
+| 추가 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/github` | `https://21st-ark.dev/api/auth/callback/google` |
+
+로컬은 `.dev.vars`에 `GITHUB_CLIENT_ID`와 `GITHUB_CLIENT_SECRET`을 저장합니다. 운영 배포 시 API Worker에 같은 이름의 설정을 추가해야 하며, 시크릿은 반드시 Secret 형식으로 설정합니다. 현재 작업에서는 운영 배포나 운영 설정 변경을 하지 않습니다. 인증 요청은 접속 중인 허용 도메인의 콜백 주소를 명시합니다. 콜백 URL 와일드카드는 필요하지 않습니다.
+
+`0008_github_login.sql`은 GitHub 사용자 ID 연결과 10분 만료 OAuth 상태를 별도 테이블에 보관합니다. state는 단일 사용이며 HttpOnly 쿠키·origin에 바인딩하고 PKCE S256을 사용합니다. 토큰은 서버에서만 교환하며 저장하거나 브라우저에 반환하지 않습니다. 최소 읽기 권한 `read:user user:email`로 사용자 ID와 인증된 기본 이메일을 확인합니다. 비공개 이메일도 지원하며, 인증되지 않은 이메일은 거절합니다. GitHub 이름·이메일만으로 기존 계정을 자동 병합하지 않습니다. 연결은 기존 계정의 인증 세션과 같은 이메일을 요구합니다.
+
+참고: [GitHub OAuth App 등록](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), [OAuth 인증과 PKCE](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps), [인증된 이메일 조회](https://docs.github.com/en/rest/users/emails).
+
+## 글 삭제
+
+내 글 관리의 삭제 버튼은 확인 후 `DELETE /api/posts/:id`로 현재 `revision`을 보냅니다. 작성자 본인과 관리자만 삭제할 수 있고, 버전 충돌은 409를 반환합니다. 삭제한 글의 좋아요·북마크·조회 기록은 외래키로 함께 제거합니다. R2 이미지는 다른 글에서 재사용할 수 있어 자동 삭제하지 않습니다. 작업 중인 브라우저 백업은 해당 글의 키만 지웁니다.
+
+
+## 필자별 개인 분류와 태그
+
+전체 분류(`topics`)는 공용 탐색 기준으로 유지합니다. 필자는 자신의 글에 개인 분류 하나와 태그 최대 10개를 별도로 지정할 수 있습니다. 이름은 필자별로 독립적이며, 개인 분류는 50개, 태그는 200개까지 관리합니다. 개인 분류 이름은 40자, 태그 이름은 30자까지이고 공백·태그 접두사·Unicode 표기를 정규화해 중복을 막습니다.
+
+`0009_writer_taxonomy.sql`은 `writer_labels`, `post_writer_labels`와 소유권·분류 개수 제약을 추가합니다. 복합 외래키로 글과 라벨의 필자가 같음을 검사하며, 부분 유일 인덱스로 글당 개인 분류 하나를 보장합니다. 글 본문과 라벨 연결은 하나의 D1 batch로 저장합니다. 요청마다 임의 write token을 사용해 revision 충돌 시 라벨만 덮어쓰는 일을 막습니다. 이 내부 토큰은 API 응답에 포함하지 않습니다.
+
+- `GET /api/writers/:id/taxonomy`: 업로드된 글에 사용된 분류·태그와 공개 글 수.
+- `GET /api/writers/:id/taxonomy?scope=manage`: 소유자 또는 관리자가 빈 항목·초안용 항목까지 조회.
+- `POST /api/writers/:id/taxonomy`: 본인의 분류 또는 태그 생성 (`kind`, `name`).
+- `PATCH /api/writers/:id/taxonomy/:labelId`: 본인 항목의 이름 변경.
+- `DELETE /api/writers/:id/taxonomy/:labelId`: 본인 항목을 삭제하고 글에서 해제. 글과 전체 분류는 유지.
+- 글 저장의 `writer_category_id`와 `writer_tag_ids`: 명시하면 교체하며, 기존 클라이언트가 필드를 생략하면 현재 값을 유지.
+- `GET /api/posts?author=:id&writer_category=:categoryId&writer_tag=:tagId`: 한 필자의 개인 분류·태그 교집합으로 필터링. 초안은 공개되지 않음.
+
+프로필 오른쪽에서 분류와 태그별로 탐색하고, 소유자에게만 관리 버튼을 제공합니다. 글쓰기에서 분류·태그를 바로 만들 수 있습니다. 이름 변경은 같은 ID를 사용하는 모든 글에 반영됩니다. 공용 검색도 공개 글에 지정된 개인 분류·태그 이름을 찾습니다. `npm run test:taxonomy`는 권한, 초안 노출 방지, 이름 충돌, 검색·필터·카운트, DB 제약, 이름 변경·삭제와 revision 충돌의 원자성을 검사합니다.
+
+
+## 글 읽기 화면
+
+`#post-:id`는 왼쪽 공통 메뉴와 상단 메뉴를 유지한 전체 본문 화면으로 표시합니다. 글을 모달로 열지 않으며 읽기 중에도 사이드 메뉴로 다른 페이지에 이동할 수 있습니다. 제목·필자·대표 이미지·블록 본문·개인 분류와 태그, 좋아요·저장·공유를 표시하고 기존 권한에 따라 글 수정 버튼을 제공합니다. 읽기 설정의 본문 크기와 너비를 유지합니다.
+
+목록에서 글을 열 때 현재 탐색 조건과 스크롤을 브라우저 history에 저장하고, 목록 DOM을 숨긴 채 보존합니다. 화면의 뒤로 버튼과 브라우저 뒤로·앞으로 이동은 검색어·주제·개인 분류/태그 필터와 스크롤 위치를 복원합니다. 직접 링크 진입 시에도 같은 본문 화면을 제공하고, 이전 목록이 없다면 필자의 프로필로 돌아갑니다. 요청 순서 토큰으로 이전 글의 늦은 응답이 현재 화면을 덮어쓰지 못하게 합니다. 읽기 실패는 본문 화면 안에 재시도·뒤로 가기를 제공합니다.
+
+
+## 댓글
+
+`0010_post_comments.sql`은 글·댓글 작성자와 연결된 댓글 본문, revision과 작성·수정 시각을 저장합니다. 글 읽기 화면 아래에서 댓글 수, 최신 댓글, 작성란과 수동 새로고침·더 보기를 제공합니다. 자동 폴링은 하지 않습니다.
+
+- `GET /api/posts/:id/comments`: 공개 글의 댓글을 최신순으로 20개씩 조회. `next_cursor`를 다음 요청의 `cursor`로 전달합니다. 작성 시각과 ID로 정렬해 같은 시각의 댓글도 빠뜨리거나 중복하지 않습니다.
+- `POST /api/posts/:id/comments`: 로그인한 열람자·작성자·관리자가 `body`로 댓글을 등록합니다. 본문은 최대 3,000자이며 HTML을 실행하지 않는 일반 텍스트입니다.
+- `PATCH /api/posts/:id/comments/:commentId`: 본인만 `body`, `revision`으로 수정합니다. 관리자는 다른 사용자의 댓글을 대신 수정할 수 없습니다.
+- `DELETE /api/posts/:id/comments/:commentId`: 본인 또는 관리자가 `revision`으로 삭제합니다. 변경된 버전에 대한 요청은 409로 거절합니다.
+
+초안, 없는 글과 이용 중지된 필자의 댓글은 공개·작성되지 않습니다. 이용 중지된 사용자의 댓글은 목록과 댓글 수에서 제외합니다. 댓글 작성자 응답에는 ID·이름·프로필 이미지 주소만 포함하며 이메일·권한은 노출하지 않습니다. 수정·삭제 가능 여부는 현재 세션에 맞게 계산합니다. 모든 변경은 Origin 검사와 인증을 거치고, 사용자당 15분에 60회로 제한합니다. 글 삭제 시 댓글도 외래키로 함께 삭제됩니다.
+
+본문에서 로그인을 시작하면 현재 글 ID와 시각만 세션 저장소에 임시 기록해, 로그인 성공 후 30분 이내의 해당 글로 복귀합니다. 인증 실패 창을 닫으면 이 복귀 정보도 지웁니다. `npm run test:comments`는 댓글 권한·충돌·공개 범위·본문 길이·페이지 나누기·요청 제한을 실제 workerd/D1 환경에서 검사합니다.

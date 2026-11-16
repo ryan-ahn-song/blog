@@ -1,28 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, jsonRequest, roleName } from './api';
+import { api } from './api';
 function GoogleMark() { return <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.2H24v8h11a9.4 9.4 0 0 1-4.1 6.2v5.2h6.7c3.9-3.6 6-8.9 6-15.2Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.7-5.2c-1.8 1.2-4.1 1.9-6.8 1.9-5.2 0-9.6-3.5-11.2-8.2H5.9V33A20.4 20.4 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.8 27.6a12 12 0 0 1 0-7.2V15H5.9a20.1 20.1 0 0 0 0 18l6.9-5.4Z"/><path fill="#EA4335" d="M24 12.2c3 0 5.6 1 7.7 3l5.8-5.8A19.4 19.4 0 0 0 24 4 20.4 20.4 0 0 0 5.9 15l6.9 5.4c1.6-4.7 6-8.2 11.2-8.2Z"/></svg>; }
-export default function AuthDialog({open,onClose,user,setUser,checking,connectionError,refresh,onSignedIn,onNavigate,initialError}) {
-  const dialog=useRef(null);
-  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[pending,setPending]=useState(false),[providers,setProviders]=useState(null);
-  useEffect(()=>{ if(open){setError(initialError||'');setPassword('');if(!dialog.current.open)dialog.current.showModal();}else if(dialog.current.open)dialog.current.close(); },[open,initialError]);
-  useEffect(()=>{if(!open)return;let cancelled=false;setProviders(null);api('/api/auth/providers').then(p=>{if(!cancelled)setProviders(p);}).catch(()=>{if(!cancelled)setProviders({google:false});});return()=>{cancelled=true;};},[open]);
-  async function submit(event) {
-    event.preventDefault();setPending(true);setError('');
-    try {
-      const body=await api(user?'/api/auth/logout':'/api/auth/login',jsonRequest('POST',user?{}:{email,password}));
-      setPassword('');setUser(body.user);onClose();if(body.user)onSignedIn(body.user);else onNavigate('home');
-    }catch(e){setError(e.message);}finally{setPending(false);}
-  }
-  function navigate(view){onClose();onNavigate(view);}
-  const googleUrl='/api/auth/google?origin='+encodeURIComponent(location.origin);
-  return <dialog className="auth-dialog" ref={dialog} aria-labelledby="auth-title" onClose={()=>{setPassword('');onClose();}} onCancel={onClose}>
-    <button type="button" className="auth-close" aria-label="프로필 닫기" onClick={onClose}>×</button>
-    <p className="auth-brand">21st ARK</p><h2 id="auth-title">{user?'내 계정':'반가워요'}</h2>
-    {checking?<p className="auth-description" role="status">로그인 상태를 확인하고 있어요.</p>:connectionError?<><p className="auth-error" role="alert">로그인 서비스에 연결하지 못했습니다.</p><button className="pill" onClick={refresh}>다시 확인</button></>:user?<><div className="account-avatar">{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</div><strong className="account-name">{user.name}</strong><p className="account-email">{user.email}</p><span className="account-role">{roleName(user.role)}</span>{user.bio&&<p className="account-bio">{user.bio}</p>}<div className="profile-links"><button className="pill" onClick={()=>navigate('author')}>내 필자 페이지</button>{['author','admin'].includes(user.role)&&<><button className="pill primary" onClick={()=>navigate('write')}>글 쓰기</button><button className="pill" onClick={()=>navigate('my-posts')}>나의 글</button></>}{user.role==='admin'&&<button className="pill" onClick={()=>navigate('admin')}>멤버 관리</button>}</div>{user.role==='reader'&&<p className="auth-description">글을 읽고 함께해 주세요. 글을 쓰고 싶다면 관리자에게 작성자 권한을 요청해 주세요.</p>}{providers?.google&&<a className="text-button account-link" href={googleUrl}>동일 이메일의 Google 계정 연결</a>}<form onSubmit={submit}><button className="pill auth-submit" disabled={pending}>{pending?'로그아웃 중…':'로그아웃'}</button></form></>:<>
-      <p className="auth-description">Google 계정으로 로그인하고<br/>당신의 글을 함께 나눠 보세요.</p>
-      {providers?.google?<a className="google-signin" href={googleUrl}><GoogleMark/><span>Google 계정으로 계속하기</span></a>:<button className="google-signin" disabled><GoogleMark/><span>{providers===null?'로그인 확인 중…':'Google 로그인 준비 중'}</span></button>}
-      <p className="auth-note">처음 로그인하면 열람자로 가입됩니다.<br/>작성자 권한은 관리자가 부여합니다.</p>
-      <details className="password-login"><summary>기존 이메일 계정으로 로그인</summary><form onSubmit={submit}><label htmlFor="login-email">이메일</label><input id="login-email" type="email" autoComplete="username" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} disabled={pending}/><label htmlFor="login-password">비밀번호</label><input id="login-password" type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={e=>setPassword(e.target.value)} disabled={pending}/><button className="pill auth-submit" disabled={pending}>{pending?'로그인 중…':'로그인'}</button></form></details>
-    </>}{error&&<p className="auth-error" role="alert">{error}</p>}
+function GitHubMark(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" stroke="none" d="M12 .8A11.2 11.2 0 0 0 8.46 22.6c.56.1.77-.24.77-.54v-2.1c-3.14.68-3.8-1.34-3.8-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 1 .1.75 2.13 3.28 1.47.1-.73.39-1.23.72-1.51-2.5-.28-5.14-1.25-5.14-5.56 0-1.23.44-2.23 1.16-3.02-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.08 1.15a10.7 10.7 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.62 1.55.23 2.7.12 2.98.72.8 1.15 1.8 1.15 3.02 0 4.32-2.64 5.28-5.15 5.56.4.35.77 1.03.77 2.08v3.18c0 .3.2.65.77.54A11.2 11.2 0 0 0 12 .8Z"/></svg>;}
+export default function AuthDialog({open,onClose,user,checking,connectionError,refresh,initialError,onOAuthStart}) {
+  const dialog=useRef(null),[providers,setProviders]=useState(null),[providerError,setProviderError]=useState(false),[retry,setRetry]=useState(0);
+  useEffect(()=>{if(open&&!dialog.current.open)dialog.current.showModal();else if(!open&&dialog.current.open)dialog.current.close();},[open]);
+  useEffect(()=>{if(!open)return;const controller=new AbortController();setProviders(null);setProviderError(false);api('/api/auth/providers',{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setProviders(result);}).catch(()=>{if(!controller.signal.aborted)setProviderError(true);});return()=>controller.abort();},[open,retry]);
+  return <dialog className="auth-dialog" ref={dialog} aria-labelledby="auth-title" onClose={onClose} onCancel={onClose}>
+    <button type="button" className="auth-close" aria-label="로그인 닫기" onClick={onClose}>×</button><p className="auth-brand">21st ARK</p><h2 id="auth-title">반가워요</h2>
+    {checking?<p className="auth-description" role="status">로그인 상태를 확인하고 있어요.</p>:connectionError?<><p className="auth-error" role="alert">로그인 서비스에 연결하지 못했습니다.</p><button className="pill" onClick={refresh}>다시 확인</button></>:user?<><p className="auth-description">{user.name}님으로 로그인되어 있어요.</p><button className="pill" onClick={onClose}>닫기</button></>:<>
+      <p className="auth-description">계정으로 로그인하고<br/>당신의 글을 함께 나눠 보세요.</p>
+      <div className="social-signin-buttons">{[['google','Google',GoogleMark],['github','GitHub',GitHubMark]].map(([id,label,Mark])=>providers?.[id]?<a key={id} className={id+'-signin social-signin'} onClick={onOAuthStart} href={'/api/auth/'+id+'?origin='+encodeURIComponent(location.origin)}><Mark/><span>{label} 계정으로 계속하기</span></a>:<button key={id} className={id+'-signin social-signin'} disabled title={providerError?'로그인 서비스를 불러오지 못했어요.':providers===null?'로그인 확인 중…':label+' 로그인 준비 중'}><Mark/><span>{label} 계정으로 계속하기</span></button>)}</div>
+      {providerError&&<p className="auth-error" role="alert">로그인 서비스를 불러오지 못했어요. <button className="text-button" onClick={()=>setRetry(value=>value+1)}>다시 시도</button></p>}
+    </>}{initialError&&<p className="auth-error" role="alert">{initialError}</p>}
   </dialog>;
 }

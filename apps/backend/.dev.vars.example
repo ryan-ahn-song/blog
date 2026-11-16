@@ -4,3 +4,11 @@
 # Copy to .dev.vars and set the secret to enable local Google login.
 # Register http://127.0.0.1:3000/api/auth/callback/google in Google Cloud.
 # GOOGLE_CLIENT_SECRET=
+
+# GitHub OAuth App: register all used callback URLs exactly (no wildcard needed).
+# http://127.0.0.1:3000/api/auth/callback/github
+# https://21stark.dev/api/auth/callback/github
+# https://21st-ark.dev/api/auth/callback/github
+# GITHUB_CLIENT_ID is public and also configured in wrangler.jsonc.
+# GITHUB_CLIENT_ID=Ov23lirEpAhFpJYlJxsZ
+# GITHUB_CLIENT_SECRET=

@@ -4,11 +4,12 @@ import { type AuthEnv, requireUser, checkOrigin, currentUser, now, limited, dige
 import { topicsForPost } from './catalog';
 import { mediaUrl,postImageKey,profileImageKey,inlineImageKey } from './media';
 import { documentFields } from './document';
+import {postLabels,labelWrites} from './taxonomy';
 type Env = AuthEnv & { MEDIA: R2Bucket; MEDIA_BASE_URL?: string };
-type PostRow = { id: string; author_id: string; author_name: string; author_bio: string; author_avatar_key:string|null; title: string; summary: string; body: string; body_format:'plain'|'markdown';body_doc:string|null; category: string; topic_ids: string; image_key: string | null; status: string; revision: number; created_at: number; updated_at: number; published_at: number | null; like_count:number; liked:number; saved:number };
-const select = "SELECT p.*,u.name AS author_name,u.bio AS author_bio,u.avatar_key AS author_avatar_key,(SELECT count(*) FROM post_likes l JOIN auth_users a ON a.id=l.user_id WHERE l.post_id=p.id AND a.disabled=0) AS like_count,EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked,EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?) AS saved FROM posts p JOIN auth_users u ON u.id=p.author_id";
+type PostRow = { taxonomy_write_token:string|null;writer_category_json:string|null;writer_tags_json:string; id: string; author_id: string; author_name: string; author_bio: string; author_avatar_key:string|null; title: string; summary: string; body: string; body_format:'plain'|'markdown';body_doc:string|null; category: string; topic_ids: string; image_key: string | null; status: string; revision: number; created_at: number; updated_at: number; published_at: number | null; like_count:number; liked:number; saved:number };
+const select = "SELECT p.*,u.name AS author_name,u.bio AS author_bio,u.avatar_key AS author_avatar_key,(SELECT count(*) FROM post_likes l JOIN auth_users a ON a.id=l.user_id WHERE l.post_id=p.id AND a.disabled=0) AS like_count,EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked,EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?) AS saved,(SELECT json_object('id',l.id,'name',l.name) FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='category') AS writer_category_json,(SELECT json_group_array(json_object('id',t.id,'name',t.name)) FROM (SELECT l.id,l.name FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='tag' ORDER BY l.name,l.id) t) AS writer_tags_json FROM posts p JOIN auth_users u ON u.id=p.author_id";
 function imageUrl(key: string, request: Request, env: Env) { return (local(request) ? '/api/media' : env.MEDIA_BASE_URL) + '/' + key; }
-function publicPost(p: PostRow, env: Env, request: Request) { return { ...p, body_doc:p.body_doc?JSON.parse(p.body_doc):null, topic_ids:JSON.parse(p.topic_ids),liked:Boolean(p.liked),saved:Boolean(p.saved),writer: { id: p.author_id, name: p.author_name, bio:p.author_bio,avatar_url:mediaUrl(p.author_avatar_key,request,env) }, image: p.image_key ? imageUrl(p.image_key, request, env) : null }; }
+function publicPost(p: PostRow, env: Env, request: Request) { const {taxonomy_write_token,writer_category_json,writer_tags_json,...post}=p;return { ...post,writer_category:writer_category_json?JSON.parse(writer_category_json):null,writer_tags:JSON.parse(writer_tags_json||'[]'), body_doc:p.body_doc?JSON.parse(p.body_doc):null, topic_ids:JSON.parse(p.topic_ids),liked:Boolean(p.liked),saved:Boolean(p.saved),writer: { id: p.author_id, name: p.author_name, bio:p.author_bio,avatar_url:mediaUrl(p.author_avatar_key,request,env) }, image: p.image_key ? imageUrl(p.image_key, request, env) : null }; }
 async function validateBodyImages(body:Record<string,unknown>,request:Request,env:Env,user:{id:string;role:string}){
   const keys=new Set<string>();
   type ImageBlock={type:string;props?:{url?:string};children?:ImageBlock[]};
@@ -62,11 +63,27 @@ export async function handlePosts(request: Request, env: Env) {
     if(category&&category!=='all'){if(!['tech','life'].includes(category))throw new HttpError(400,'분류를 확인해 주세요.');clauses.push('p.category=?');values.push(category);}
     if(topic&&topic!=='all'){clauses.push('EXISTS(SELECT 1 FROM json_each(p.topic_ids) j WHERE j.value=?)');values.push(topic);}
     if(author){clauses.push('p.author_id=?');values.push(author.slice(0,100));}
-    if(q){clauses.push("(instr(lower(p.title||' '||p.summary||' '||p.body||' '||u.name),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0))");values.push(q,q);}
+    const writerCategory=url.searchParams.get('writer_category'),writerTag=url.searchParams.get('writer_tag');
+    if((writerCategory||writerTag)&&!author)throw new HttpError(400,'필자와 함께 개인 분류 또는 태그를 선택해 주세요.');
+    if(writerCategory){clauses.push("EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='category' AND l.id=?)");values.push(writerCategory.slice(0,100));}
+    if(writerTag){clauses.push("EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='tag' AND l.id=?)");values.push(writerTag.slice(0,100));}
+    if(q){clauses.push("(instr(lower(p.title||' '||p.summary||' '||p.body||' '||u.name),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0) OR EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND instr(lower(l.name),lower(?))>0))");values.push(q,q,q);}
     const where=' WHERE '+clauses.join(' AND ');
     const rows = await env.DB.prepare(select + where + ' ORDER BY ' + (mine ? 'p.updated_at' : 'p.published_at') + ' DESC,p.id LIMIT 20 OFFSET ?').bind(actorId,actorId,...values, page * 20).all<PostRow>();
     const total = await env.DB.prepare('SELECT count(*) AS total FROM posts p JOIN auth_users u ON u.id=p.author_id' + where).bind(...values).first<{total: number}>();
     return json({ posts: rows.results.map(p => publicPost(p, env, request)), total: total?.total ?? 0, page });
+  }
+  if(request.method==='DELETE'&&id){
+    checkOrigin(request);
+    const actor=await requireUser(request,env,['author','admin']);
+    const body=await readBody(request);
+    if(typeof body.revision!=='number'||!Number.isSafeInteger(body.revision))throw new HttpError(400,'글 버전을 확인해 주세요.');
+    const existing=await env.DB.prepare('SELECT author_id,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;revision:number}>();
+    if(!existing)throw new HttpError(404,'글을 찾을 수 없습니다.');
+    if(existing.author_id!==actor.id&&actor.role!=='admin')throw new HttpError(403,'본인의 글만 삭제할 수 있습니다.');
+    const removed=await env.DB.prepare('DELETE FROM posts WHERE id=? AND revision=? RETURNING id').bind(id,body.revision).first();
+    if(!removed)throw new HttpError(409,'다른 창에서 수정한 글입니다. 새로고침한 뒤 다시 삭제해 주세요.');
+    return json({deleted:true,id});
   }
   if (!['POST', 'PUT'].includes(request.method) || (request.method === 'POST' && id) || (request.method === 'PUT' && !id)) return json({error:'지원하지 않는 요청입니다.'},405);
   checkOrigin(request);
@@ -86,23 +103,20 @@ export async function handlePosts(request: Request, env: Env) {
     if (!await env.MEDIA.head(b.image_key)) throw new HttpError(400, '대표 이미지가 존재하지 않습니다.');
     imageKey = b.image_key;
   }
-  let p: PostRow | null;
-  if (!id) {
-    const postId = randomUUID();
-    await env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(postId, user.id, b.title.trim(), b.summary.trim(), b.body, b.category, imageKey, b.status, b.status === 'published' ? now() : null,JSON.stringify(topicIds),document.format,document.document).run();
-    p = await env.DB.prepare(select + ' WHERE p.id=?').bind(user.id,user.id,postId).first<PostRow>();
-  } else {
-    const existing = await env.DB.prepare(select + ' WHERE p.id=?').bind(user.id,user.id,id).first<PostRow>();
-    if (!existing) throw new HttpError(404, '글을 찾을 수 없습니다.');
-    if (existing.author_id !== user.id && user.role !== 'admin') throw new HttpError(403, '본인의 글만 수정할 수 있습니다.');
-    // Admins may edit another author's post without replacing its existing image.
-    if (typeof b.revision !== 'number' || !Number.isSafeInteger(b.revision)) throw new HttpError(400, '글 버전을 확인해 주세요.');
-    const updated = await env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(), b.summary.trim(), b.body, b.category, imageKey, b.status, now(), b.status === 'published' ? existing.published_at ?? now() : existing.published_at,JSON.stringify(topicIds),document.format,document.document, id, b.revision).first();
-    if (!updated) throw new HttpError(409, '다른 창에서 수정한 글입니다. 내용을 복사해 둔 뒤 다시 열어 주세요.');
-    p = await env.DB.prepare(select + ' WHERE p.id=?').bind(user.id,user.id,id).first<PostRow>();
-  }
-  return json({post:p ? publicPost(p, env, request) : null}, id ? 200 : 201);
+  const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number}>():null;
+  if(id&&!existing)throw new HttpError(404,'글을 찾을 수 없습니다.');
+  if(existing&&existing.author_id!==user.id&&user.role!=='admin')throw new HttpError(403,'본인의 글만 수정할 수 있습니다.');
+  if(id&&(typeof b.revision!=='number'||!Number.isSafeInteger(b.revision)))throw new HttpError(400,'글 버전을 확인해 주세요.');
+  const ownerId=existing?.author_id??user.id,labels=await postLabels(env.DB,ownerId,b,id),postId=id??randomUUID(),token=randomUUID();
+  const write=!id?
+    env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc,taxonomy_write_token) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(postId,user.id,b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,b.status==='published'?now():null,JSON.stringify(topicIds),document.format,document.document,token):
+    env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,id,b.revision);
+  const changes=await env.DB.batch([write,...labelWrites(env.DB,postId,token,labels)]);
+  if(!changes[0].results.length)throw new HttpError(409,'다른 창에서 수정한 글입니다. 내용을 복사해 둔 뒤 다시 열어 주세요.');
+  const p=await env.DB.prepare(select+' WHERE p.id=?').bind(user.id,user.id,postId).first<PostRow>();
+  return json({post:p?publicPost(p,env,request):null},id?200:201);
 }
+
 export async function handleReaction(request:Request,env:Env){
   if(request.method!=='PUT')return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'PUT'});
   checkOrigin(request);

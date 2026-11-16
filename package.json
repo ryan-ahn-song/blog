@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/frontend", "apps/backend"],
-  "engines": { "node": ">=22.12.0" },
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "concurrently -k -n web,api \"npm run dev -w @21st-ark/frontend\" \"npm run dev -w @21st-ark/backend\"",
     "dev:frontend": "npm run dev -w @21st-ark/frontend",
@@ -18,9 +23,13 @@
     "test:features": "npm run build:backend && node scripts/test-features.mjs",
     "db:check": "npm run db:check -w @21st-ark/backend",
     "db:migrate:local": "npm run db:migrate:local -w @21st-ark/backend",
-    "auth:create-user": "node --experimental-strip-types scripts/create-user.mjs",
     "deploy:frontend": "npm run deploy -w @21st-ark/frontend",
-    "deploy:backend": "npm run deploy -w @21st-ark/backend"
+    "deploy:backend": "npm run deploy -w @21st-ark/backend",
+    "test:github": "npm run build:backend && node scripts/test-github.mjs",
+    "test:taxonomy": "npm run build:backend && node scripts/test-taxonomy.mjs",
+    "test:comments": "npm run build:backend && node scripts/test-comments.mjs"
   },
-  "devDependencies": { "concurrently": "^9.2.1" }
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }

@@ -42,8 +42,12 @@ try {
   await migrate('0004_writer_profiles.sql');
   await migrate('0005_block_documents.sql');
   await migrate('0006_writer_subscriptions.sql');
+  await migrate('0007_post_reads.sql');
+  await migrate('0008_github_login.sql');
+  await migrate('0009_writer_taxonomy.sql');
+  await migrate('0010_post_comments.sql');
   assert.deepEqual(JSON.parse((await db.prepare("SELECT topic_ids FROM posts WHERE id='pre-migration'").first()).topic_ids),['tech']);
-  const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}) }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
+  const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site, headers = {} } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
   const sessionCookie = r => { const match = r.headers.get('set-cookie')?.match(/__Host-ark_session=[a-f0-9]{64}/); assert.ok(match); return match[0]; };
   assert.equal((await (await call('/api/auth/me', {cookie:'__Host-ark_session='+oldToken})).json()).user.id, 'legacy', 'Migration preserves sessions');
   async function begin(site=origin) { const r=await call('/api/auth/google',{site});assert.equal(r.status,302);const url=new URL(r.headers.get('location'));assert.equal(url.origin,'https://accounts.google.com');assert.equal(url.searchParams.get('code_challenge_method'),'S256');return {url,cookie:r.headers.get('set-cookie').split(';')[0],site}; }
@@ -59,6 +63,10 @@ try {
   const readerCookie=await login('reader@example.invalid','google-reader');
   const reader=(await (await call('/api/auth/me',{cookie:readerCookie})).json()).user;
   assert.equal(reader.role,'reader');
+  assert.equal((await call('/api/auth/account')).status,401);
+  const accountInfo=await (await call('/api/auth/account?user=legacy',{cookie:readerCookie})).json();
+  assert.equal(accountInfo.user.id,reader.id);assert.equal(accountInfo.connections.google,true);assert.equal(accountInfo.connections.github,false);assert.equal(accountInfo.google_available,true);assert.ok(!JSON.stringify(accountInfo).includes('subject'));
+  assert.equal((await call('/api/auth/account',{method:'POST',cookie:readerCookie,body:{}})).status,405);
   assert.equal((await call('/api/writers/'+reader.id)).status,404,'Unpublished reader accounts are private');
   assert.equal((await call('/api/writers/'+reader.id,{cookie:readerCookie})).status,200,'Readers can open their own profile');
   const adminCookie=await login(owner,'google-owner');
@@ -125,6 +133,47 @@ try {
   await db.prepare('UPDATE posts SET published_at=? WHERE id=?').bind(Math.floor(Date.now()/1000)-8*86400,post.id).run();
   assert.equal((await (await call('/api/trending')).json()).topics.length,0,'Trending ignores older published posts and drafts');
   await db.prepare('UPDATE posts SET published_at=? WHERE id=?').bind(Math.floor(Date.now()/1000),post.id).run();
+  // Real reading events drive private author analytics, without counting the author.
+  const viewPost=(id,cookie,headers={})=>call('/api/posts/'+id+'/view',{method:'POST',cookie,body:{},headers});
+  assert.equal((await call('/api/author/dashboard')).status,401);
+  assert.equal((await call('/api/author/dashboard',{cookie:subscriberCookie})).status,403);
+  assert.equal((await call('/api/author/dashboard?days=999',{cookie:readerCookie})).status,400);
+  assert.equal((await call('/api/author/dashboard?sort=invalid',{cookie:readerCookie})).status,400);
+  assert.equal((await call('/api/posts/'+post.id+'/view',{method:'POST',cookie:otherCookie,csrf:'https://attacker.invalid',body:{}})).status,403);
+  assert.equal((await viewPost('pre-migration',otherCookie)).status,404,'Private draft reads cannot be tracked');
+  assert.equal((await (await viewPost(post.id,readerCookie)).json()).recorded,false,'Author previews never count');
+  assert.equal((await (await viewPost(post.id,null,{DNT:'1'})).json()).recorded,false);
+  assert.equal((await (await viewPost(post.id,null,{'User-Agent':'ExampleBot'})).json()).recorded,false);
+  await viewPost(post.id,otherCookie);await viewPost(post.id,otherCookie);await viewPost(post.id,subscriberCookie);
+  const anonymousRead=await viewPost(post.id);assert.equal(anonymousRead.status,200);
+  const visitorCookie=anonymousRead.headers.get('set-cookie').match(/__Host-ark_visitor=[a-f0-9]{64}/)[0];
+  assert.match(anonymousRead.headers.get('set-cookie'),/HttpOnly/);assert.match(anonymousRead.headers.get('set-cookie'),/Secure/);
+  await viewPost(post.id,visitorCookie);
+  let stats=await (await call('/api/author/dashboard?days=7',{cookie:readerCookie})).json();
+  assert.equal(stats.owner_id,reader.id);assert.equal(stats.summary.readers,3);assert.equal(stats.summary.views,3,'Repeated opens in one session are deduplicated');assert.equal(stats.series.length,7);
+  assert.equal(stats.posts.find(p=>p.id===post.id).reader_count,3);assert.equal(stats.posts[0].daily_readers.length,14);
+  const otherStats=await (await call('/api/author/dashboard?author='+reader.id,{cookie:otherCookie})).json();assert.notEqual(otherStats.owner_id,reader.id);assert.equal(otherStats.summary.readers,0);assert.equal(otherStats.posts.length,0,'Author query parameters cannot expose another writer data');
+  const adminStats=await (await call('/api/author/dashboard?author='+reader.id,{cookie:adminCookie})).json();assert.equal(adminStats.summary.total,0,'Even an admin dashboard shows only their own posts');
+  const otherIdentity=createHash('sha256').update('reader-account:'+(await (await call('/api/auth/me',{cookie:otherCookie})).json()).user.id).digest('hex');
+  await db.prepare('UPDATE post_reads SET last_seen=? WHERE post_id=? AND visitor_hash=?').bind(Math.floor(Date.now()/1000)-1801,post.id,otherIdentity).run();
+  await viewPost(post.id,otherCookie);
+  const secondReadPost=(await (await call('/api/posts',{method:'POST',cookie:readerCookie,body:{...form,title:'통계 추가 글',status:'published'}})).json()).post;
+  await viewPost(secondReadPost.id,otherCookie);
+  const yesterday=new Date(Date.now()+9*3600*1000-86400*1000).toISOString().slice(0,10);
+  await db.prepare('UPDATE post_reads SET read_day=? WHERE post_id=?').bind(yesterday,secondReadPost.id).run();
+  const privateAnalyticsPost=(await (await call('/api/posts',{method:'POST',cookie:readerCookie,body:{...form,title:'통계용 비공개 초안'}})).json()).post;
+  await call('/api/posts/'+post.id+'/bookmark',{method:'PUT',cookie:subscriberCookie,body:{active:true}});
+  await call('/api/posts/'+post.id+'/like',{method:'PUT',cookie:subscriberCookie,body:{active:true}});
+  stats=await (await call('/api/author/dashboard?days=7&sort=readers',{cookie:readerCookie})).json();
+  const writerReads=(await (await call('/api/writers/'+reader.id)).json()).writer;assert.equal(writerReads.total_views,5);assert.ok(!JSON.stringify(writerReads).includes('visitor_hash'));
+  assert.equal(stats.summary.readers,3,'Readers across multiple posts stay unique');assert.equal(stats.summary.views,5);assert.equal(stats.summary.bookmarks,1);assert.equal(stats.summary.likes,1);assert.equal(stats.posts[0].id,post.id);
+  assert.equal(stats.series.find(point=>point.date===yesterday).readers,1);assert.equal(stats.series.at(-1).readers,3);
+  assert.equal((await (await call('/api/author/dashboard?status=draft',{cookie:readerCookie})).json()).total,1);
+  assert.equal((await (await call('/api/author/dashboard?q='+encodeURIComponent('통계 추가'),{cookie:readerCookie})).json()).posts[0].id,secondReadPost.id);
+  assert.equal((await (await call('/api/author/dashboard?status=published&sort=bookmarks',{cookie:readerCookie})).json()).posts[0].id,post.id);
+  await db.prepare('DELETE FROM posts WHERE id IN (?,?)').bind(secondReadPost.id,privateAnalyticsPost.id).run();
+  await db.prepare('DELETE FROM post_bookmarks WHERE post_id=?').bind(post.id).run();
+  await db.prepare('DELETE FROM post_likes WHERE post_id=?').bind(post.id).run();
   const react=(cookie,kind,active)=>call('/api/posts/'+post.id+'/'+kind,{method:'PUT',cookie,body:{active}});
   assert.equal((await react(undefined,'like',true)).status,401);
   assert.equal((await call('/api/posts?bookmarked=1')).status,401);
@@ -210,6 +259,16 @@ try {
   assert.equal((await call('/api/posts',{method:'POST',cookie:otherCookie,body:{...form,image_key:image.key}})).status,403);
   assert.equal((await call('/api/posts',{method:'POST',cookie:readerCookie,body:{...form,image_key:image.key}})).status,201);
   // Session role changes and suspension take effect immediately.
+  const removable=(await (await call('/api/posts',{method:'POST',cookie:otherCookie,body:{...form,title:'삭제 검사 글',status:'published'}})).json()).post;
+  await call('/api/posts/'+removable.id+'/bookmark',{method:'PUT',cookie:subscriberCookie,body:{active:true}});
+  await call('/api/posts/'+removable.id+'/like',{method:'PUT',cookie:subscriberCookie,body:{active:true}});
+  await call('/api/posts/'+removable.id+'/view',{method:'POST',cookie:subscriberCookie,body:{}});
+  const remove=(cookie,revision=removable.revision,csrf=origin)=>call('/api/posts/'+removable.id,{method:'DELETE',cookie,csrf,body:{revision}});
+  assert.equal((await remove(undefined)).status,401);assert.equal((await remove(subscriberCookie)).status,403);assert.equal((await remove(readerCookie)).status,403);assert.equal((await remove(otherCookie,1,'https://attacker.invalid')).status,403);assert.equal((await remove(otherCookie,'1')).status,400);assert.equal((await remove(otherCookie,0)).status,409);assert.equal((await call('/api/posts/'+removable.id)).status,200);
+  assert.equal((await remove(otherCookie)).status,200);assert.equal((await call('/api/posts/'+removable.id)).status,404);assert.equal((await remove(otherCookie)).status,404);
+  for(const table of ['post_reads','post_bookmarks','post_likes'])assert.equal((await db.prepare('SELECT count(*) AS count FROM '+table+' WHERE post_id=?').bind(removable.id).first()).count,0,'Deleting a post cascades '+table);
+  const adminRemovable=(await (await call('/api/posts',{method:'POST',cookie:otherCookie,body:form})).json()).post;
+  assert.equal((await call('/api/posts/'+adminRemovable.id,{method:'DELETE',cookie:adminCookie,body:{revision:adminRemovable.revision}})).status,200,'Admins can delete a post using the same revision check');
   assert.equal((await call('/api/admin/users/'+reader.id,{method:'PATCH',cookie:adminCookie,body:{role:'reader',disabled:false,version:1}})).status,200);
   assert.equal((await call('/api/posts',{method:'POST',cookie:readerCookie,body:form})).status,403);
   assert.equal((await call('/api/media?purpose=avatar',{method:'POST',cookie:readerCookie,type:'image/png',body:png})).status,201,'Reader avatars do not grant post-writing permission');
@@ -234,5 +293,5 @@ try {
   const wrongKey=await generateKeyPair('RS256');const forged=await finish(await begin(),'forged@example.invalid','google-forged',{},wrongKey.privateKey);assert.match(forged.response.headers.get('location'),/auth_error=google/);
   assert.equal((await call('/api/auth/google',{site:'https://untrusted.invalid'})).status,403);
   const alternate=await login('alternate@example.invalid','google-alternate','https://21st-ark.dev');assert.ok(alternate);
-  console.log('Features passed: lossless block documents, Markdown search, legacy text and document validation; preserved migrations; Google OAuth/JWT/PKCE; roles/admin/profile; full database search/pagination/topic counts/writers; account-private persistent bookmarks and idempotent likes; draft privacy, ownership, revisions, R2 and both domains.');
+  console.log('Features passed: private author dashboards, first-party readers, deduplicated views, period series; lossless block documents, Markdown search, legacy text and document validation; preserved migrations; Google OAuth/JWT/PKCE; role-checked revision-safe post deletion with cascade cleanup; roles/admin/profile; full database search/pagination/topic counts/writers; account-private persistent bookmarks and idempotent likes; draft privacy, ownership, revisions, R2 and both domains.');
 } finally { await mf.dispose(); }
