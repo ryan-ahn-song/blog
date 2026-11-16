@@ -16,7 +16,8 @@
 
 - Cloudflare API Worker의 공개 Production URL 및 Preview URL 비활성화: 브라우저에서 적용.
 - R2 Public Development URL: 기존 비활성 상태 확인.
-- R2 `media.21stark.dev` Custom Domain의 Access를 Disabled로 변경. 공개 개발 URL도 Disabled 유지. 기존 객체를 삭제하거나 도메인을 제거하지 않음. 공개 원본 요청은 401, 같은 포스트의 `/api/media/posts/...` 요청은 200/image/png/private,no-store 확인. 이미 외부에 복사된 파일까지 회수할 수는 없음.
+- R2 `media.21stark.dev` Custom Domain의 Access를 Disabled로 변경. 공개 개발 URL도 Disabled 유지. 기존 객체를 삭제하거나 도메인을 제거하지 않음.
+- **R2 Access를 꺼도 기존 이미지가 CDN HIT로 200 응답하는 것을 추가 검사에서 발견.** 이전 도메인 zone에 `http.host eq "media.21stark.dev"` → Block custom rule을 Active로 배포하고 해당 호스트만 Custom Purge 실행. 최종적으로 실제 포스트 이미지의 공개 원본은 403, 같은 이미지의 `/api/media`는 200/private,no-store 확인. 규칙 ID `089914add08a41e79eb83230be78a257`. 이 차단 규칙을 해제하지 말 것. 외부에 이미 복사되거나 브라우저에 저장된 파일은 회수할 수 없음.
 - 메인 도메인 WAF Rate limiting `API burst protection` 활성화: `starts_with(http.request.uri.path, "/api/")`, IP당 200 requests/10 seconds 초과 시 10 seconds Block. 무료 제공 한도 안에서 구성했으며 서버의 사용자/작업별 제한과 함께 적용. 운영 부하 테스트로 차단을 고의 유발하지는 않음.
 - 두 도메인 모두 SSL/TLS Full (strict), Always Use HTTPS On, Minimum TLS 1.2, TLS 1.3 On 확인. HSTS는 앱 응답에서 max-age=31536000 적용. preload/includeSubDomains는 추가하지 않음.
 - 코드 커밋 `04c12e6`의 Cloudflare 연결 빌드 성공 확인. API 빌드 `535ebd95-8a88-45cb-b567-c8ed4b3b280a`는 원격 D1 마이그레이션 후 배포하는 `npm run deploy:backend` 실행. 0014/0015/0016을 포함한 새 API 동작 및 웹 보안 헤더를 운영에서 확인.
