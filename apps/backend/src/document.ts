@@ -1,6 +1,7 @@
 import { HttpError } from './http';
+import { safeEmbedUrl, describeEmbed } from '../../../shared/embeds';
 
-const blockTypes=new Set(['paragraph','heading','bulletListItem','numberedListItem','checkListItem','toggleListItem','quote','codeBlock','table','divider','image']);
+const blockTypes=new Set(['paragraph','heading','bulletListItem','numberedListItem','checkListItem','toggleListItem','quote','codeBlock','table','divider','image','linkEmbed']);
 const safeUrl=(value:string)=>!value||/^https?:\/\/[^\s]+$/i.test(value)||/^mailto:[^\s]+$/i.test(value)||/^\/api\/media\/posts\/[\w-]+\/[\w-]+\.(png|jpg|webp)$/.test(value)||/^#[\w-]+$/.test(value);
 
 /** Bound structured input before passing it to the block editor on another device. */
@@ -51,6 +52,12 @@ export function documentFields(body:Record<string,unknown>){
       if(block.props!==undefined&&(!block.props||typeof block.props!=='object'||Array.isArray(block.props)))throw new HttpError(400,'블록 속성을 확인해 주세요.');
       if(block.props&&Object.values(block.props).some(value=>!['string','number','boolean'].includes(typeof value)))throw new HttpError(400,'블록 속성을 확인해 주세요.');
       const props=(block.props??{}) as Record<string,unknown>;
+      if(block.type==='linkEmbed'){
+        if(Object.keys(props).some(key=>!['href','title','display'].includes(key))||(props.href!==undefined&&(typeof props.href!=='string'||(props.href!==''&&!safeEmbedUrl(props.href))))||(props.title!==undefined&&(typeof props.title!=='string'||props.title.length>160)))throw new HttpError(400,'임베드 링크(2,048자)와 제목(160자)을 확인해 주세요.');
+        if(props.display!==undefined&&!['link','video'].includes(String(props.display)))throw new HttpError(400,'임베드 표시 방식을 확인해 주세요.');
+        if(props.display==='video'&&props.href&&describeEmbed(props.href)?.kind!=='video')throw new HttpError(400,'YouTube 또는 Vimeo 영상 링크를 입력해 주세요.');
+        if(block.content!==undefined&&block.content!==''&&(!Array.isArray(block.content)||block.content.length))throw new HttpError(400,'임베드 블록의 내용을 확인해 주세요.');
+      }
       if(props.level!==undefined&&(!Number.isInteger(props.level)||Number(props.level)<1||Number(props.level)>6))throw new HttpError(400,'제목 단계를 확인해 주세요.');
       if(props.checked!==undefined&&typeof props.checked!=='boolean')throw new HttpError(400,'체크리스트 상태를 확인해 주세요.');
       if(block.content!==undefined&&typeof block.content!=='string'&&!Array.isArray(block.content)&&!(block.type==='table'&&block.content&&typeof block.content==='object'))throw new HttpError(400,'블록 내용을 확인해 주세요.');

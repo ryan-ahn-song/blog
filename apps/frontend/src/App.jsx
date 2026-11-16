@@ -134,7 +134,7 @@ export default function App() {
     if (!navigate('write')) return;
     setEditing(post);
   }
-  function savedPost(post) { setEditing(post); setDirty(false); setMessage(post.status === 'published' ? '포스트를 업로드했습니다.' : '임시저장했습니다.'); refreshContent(); }
+  function savedPost(post) { setEditing(null);setDirty(false);setView('my-posts');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');setMessage(post.status === 'published' ? '포스트를 업로드했습니다.' : '임시저장했습니다.');refreshContent();openArticle(post.id,true,false,{view:'my-posts',category:'all',author:null,query:'',topicId:'all',requestPage:0,writerFilters:{category:null,tag:null},scrollTop:0}); }
   async function logout(){
     if(loggingOut)return;
     if(dirty&&!window.confirm('저장하지 않은 변경 사항이 있습니다. 로그아웃할까요?'))return;
@@ -149,10 +149,10 @@ export default function App() {
   function restoreBrowse(snapshot){
     setView(snapshot.view??'home');setCategory(snapshot.category??'all');setAuthor(snapshot.author??null);setQuery(snapshot.query??'');setTopicId(snapshot.topicId??'all');setRequestPage(snapshot.requestPage??0);setWriterFilters(snapshot.writerFilters??{category:null,tag:null});readerScroll.current=snapshot.scrollTop??0;
   }
-  async function openArticle(id,updateHash=true,refresh=false){
+  async function openArticle(id,updateHash=true,refresh=false,returnTo=null){
     const same=articleIdRef.current===id;
     if(updateHash&&!same){
-      const snapshot=articleIdRef.current?articleReturn.current:{view,category,author,query,topicId,requestPage,writerFilters,scrollTop:surfaceRef.current?.scrollTop??0};
+      const snapshot=returnTo??(articleIdRef.current?articleReturn.current:{view,category,author,query,topicId,requestPage,writerFilters,scrollTop:surfaceRef.current?.scrollTop??0});
       articleReturn.current=snapshot;readerFocus.current=document.activeElement;
       if(!articleIdRef.current)history.replaceState({...history.state,arkBrowse:snapshot},'',location.href);
       const url=new URL(location.href);url.hash='post-'+id;history.pushState({arkArticle:true,arkBrowse:snapshot},'',url.href);lastRoute.current=url.href;

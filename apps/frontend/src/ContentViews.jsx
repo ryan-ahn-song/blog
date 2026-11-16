@@ -7,7 +7,7 @@ function blockText(value){
   if(Array.isArray(value))return value.map(blockText).filter(Boolean).join(' ');
   if(!value||typeof value!=='object')return '';
   if(typeof value.text==='string')return value.text;
-  return [blockText(value.content??value.rows??value.cells),blockText(value.children),value.type==='image'?value.props?.caption:''].filter(Boolean).join(' ');
+  return [blockText(value.content??value.rows??value.cells),blockText(value.children),value.type==='image'?value.props?.caption:value.type==='linkEmbed'?value.props?.title||value.props?.href:''].filter(Boolean).join(' ');
 }
 function excerpt(post){return post.body_format==='markdown'&&post.body_doc?(blockText(post.body_doc).slice(0,240)||'포스트 읽기'):post.body.slice(0,240);}
 export function Avatar({ writer }) { return <span className="avatar">{writer.avatar_url?<img src={writer.avatar_url} alt="" loading="lazy"/>:Array.from(writer.name)[0]}</span>; }

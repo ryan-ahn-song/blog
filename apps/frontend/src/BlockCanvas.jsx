@@ -1,13 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core';
+import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from '@blocknote/core';
 import { ko } from '@blocknote/core/locales';
-import { useCreateBlockNote } from '@blocknote/react';
+import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react';
+import { createLinkEmbed, parseEmbedMarkdown, serializeEmbedMarkdown } from './EmbedBlock';
 import { BlockNoteView } from '@blocknote/mantine';
 import '@blocknote/mantine/style.css';
 import './block-editor.css';
 
 const supported=['paragraph','heading','bulletListItem','numberedListItem','checkListItem','toggleListItem','quote','codeBlock','table','divider','image'];
-const schema=BlockNoteSchema.create({blockSpecs:Object.fromEntries(Object.entries(defaultBlockSpecs).filter(([type])=>supported.includes(type)))});
+const schema=BlockNoteSchema.create({blockSpecs:{...Object.fromEntries(Object.entries(defaultBlockSpecs).filter(([type])=>supported.includes(type))),linkEmbed:createLinkEmbed()}});
 const dictionary={...ko,placeholders:{...ko.placeholders,default:"포스트를 쓰거나 '/'를 눌러 블록을 추가하세요",emptyDocument:"포스트를 쓰거나 '/'를 눌러 블록을 추가하세요"}};
 const initialBlocks=value=>Array.isArray(value.body_doc)&&value.body_doc.length?value.body_doc:(value.body||'').split(/\n{2,}/).map(text=>({type:'paragraph',content:text}));
 
@@ -15,29 +16,35 @@ export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile
   const [mode,setMode]=useState('blocks'),[source,setSource]=useState(initialValue.body||''),[error,setError]=useState(''),[imagePending,setImagePending]=useState(false);
   const sourceDirty=useRef(false),silent=useRef(false),importInput=useRef(null),imageInput=useRef(null),imageTarget=useRef(null);
   const editor=useCreateBlockNote({schema,dictionary,initialContent:initialBlocks(initialValue),uploadFile});
-  const previousDocument=useRef({json:JSON.stringify(editor.document),empty:!editor.blocksToMarkdownLossy(editor.document).trim()});
-  useEffect(()=>{if(initialValue.body_format==='markdown'&&!initialValue.body_doc){silent.current=true;try{const blocks=editor.tryParseMarkdownToBlocks(initialValue.body||'');editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);previousDocument.current={json:JSON.stringify(editor.document),empty:!editor.blocksToMarkdownLossy(editor.document).trim()};}finally{silent.current=false;}}},[editor]);
+  const previousDocument=useRef({json:JSON.stringify(editor.document),empty:!serializeEmbedMarkdown(editor).trim()});
+  useEffect(()=>{if(initialValue.body_format==='markdown'&&!initialValue.body_doc){silent.current=true;try{const blocks=parseEmbedMarkdown(editor,initialValue.body||'');editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);previousDocument.current={json:JSON.stringify(editor.document),empty:!serializeEmbedMarkdown(editor).trim()};}finally{silent.current=false;}}},[editor]);
+  async function slashItems(query){
+    const items=getDefaultReactSlashMenuItems(editor),imageIndex=items.findIndex(item=>item.title===dictionary.slash_menu.image.title);
+    items.splice(imageIndex>=0?imageIndex+1:items.length,0,{title:'링크 임베드',subtext:'웹 주소를 링크 카드로 표시합니다.',aliases:['link','embed','링크','임베드','카드'],group:dictionary.slash_menu.image.group,icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m10 13 4-4m-6 7-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(1 0)"/></svg>,onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:'linkEmbed',props:{display:'link'}})});
+    items.splice(imageIndex>=0?imageIndex+2:items.length,0,{title:'영상 임베드',subtext:'YouTube·Vimeo 영상을 소형 뷰어로 표시합니다.',aliases:['video','youtube','유튜브','vimeo','비메오','영상','동영상'],group:dictionary.slash_menu.image.group,icon:<span aria-hidden="true">▶</span>,onItemClick:()=>insertOrUpdateBlockForSlashMenu(editor,{type:'linkEmbed',props:{display:'video'}})});
+    return filterSuggestionItems(items,query);
+  }
   function snapshot(){
     if(sourceDirty.current){
       silent.current=true;
-      try{const blocks=editor.tryParseMarkdownToBlocks(source);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);sourceDirty.current=false;}
+      try{const blocks=parseEmbedMarkdown(editor,source);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);sourceDirty.current=false;}
       finally{silent.current=false;}
       return {body:source,body_doc:editor.document,body_format:'markdown'};
     }
-    return {body:editor.blocksToMarkdownLossy(editor.document),body_doc:editor.document,body_format:'markdown'};
+    return {body:serializeEmbedMarkdown(editor),body_doc:editor.document,body_format:'markdown'};
   }
   useImperativeHandle(ref,()=>({snapshot}),[editor,source]);
   function switchMode(next){
     setError('');
     try{
-      if(next==='markdown'&&mode!=='markdown'){setSource(editor.blocksToMarkdownLossy(editor.document));sourceDirty.current=false;}
+      if(next==='markdown'&&mode!=='markdown'){setSource(serializeEmbedMarkdown(editor));sourceDirty.current=false;}
       else if(sourceDirty.current){const value=snapshot();onChange(value);}
       setMode(next);
     }catch{setError('마크다운을 변환하지 못했습니다. 내용을 확인해 주세요.');}
   }
   function changed(){
     if(silent.current)return;
-    const body=editor.blocksToMarkdownLossy(editor.document),current={json:JSON.stringify(editor.document),empty:!body.trim()},previous=previousDocument.current;
+    const body=serializeEmbedMarkdown(editor),current={json:JSON.stringify(editor.document),empty:!body.trim()},previous=previousDocument.current;
     previousDocument.current=current;
     if(current.json===previous.json||(current.empty&&previous.empty))return;
     onChange({body,body_doc:editor.document,body_format:'markdown'});
@@ -75,8 +82,8 @@ export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile
     const file=event.target.files?.[0];event.target.value='';if(!file)return;
     setError('');
     if(file.size>320000){setError('마크다운 파일은 320KB 이하로 선택해 주세요.');return;}
-    if((editor.blocksToMarkdownLossy(editor.document).trim()||source.trim())&&!window.confirm('현재 본문을 선택한 마크다운 파일로 바꿀까요?'))return;
-    try{const text=await file.text();if(text.length>80000)throw new Error('본문은 80,000자 이내로 작성해 주세요.');silent.current=true;const blocks=editor.tryParseMarkdownToBlocks(text);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);sourceDirty.current=false;setSource(text);onChange({body:text,body_doc:editor.document,body_format:'markdown'});}
+    if((serializeEmbedMarkdown(editor).trim()||source.trim())&&!window.confirm('현재 본문을 선택한 마크다운 파일로 바꿀까요?'))return;
+    try{const text=await file.text();if(text.length>80000)throw new Error('본문은 80,000자 이내로 작성해 주세요.');silent.current=true;const blocks=parseEmbedMarkdown(editor,text);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);sourceDirty.current=false;setSource(text);onChange({body:text,body_doc:editor.document,body_format:'markdown'});}
     catch(e){setError(e.message||'마크다운 파일을 불러오지 못했습니다.');}finally{silent.current=false;}
   }
   return <section className="document-editor" aria-label="본문 편집">
@@ -85,7 +92,7 @@ export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile
     {error&&<p className="auth-error" role="alert">{error}</p>}
     <div className="document-page">
       <div className="document-mode-label"><span>{mode==='preview'?'미리보기':mode==='markdown'?'MARKDOWN':'본문'}</span>{mode==='blocks'&&<span>드래그로 블록 이동 · / 로 블록 추가</span>}</div>
-      <div hidden={mode==='markdown'} className={mode==='preview'?'block-canvas document-preview':'block-canvas'}><BlockNoteView editor={editor} theme="dark" editable={!disabled&&mode==='blocks'} onChange={changed} formattingToolbar={mode==='blocks'} sideMenu={mode==='blocks'} slashMenu={mode==='blocks'} linkToolbar={mode==='blocks'} filePanel={mode==='blocks'}/></div>
+      <div hidden={mode==='markdown'} className={mode==='preview'?'block-canvas document-preview':'block-canvas'}><BlockNoteView editor={editor} theme="dark" editable={!disabled&&mode==='blocks'} onChange={changed} formattingToolbar={mode==='blocks'} sideMenu={mode==='blocks'} slashMenu={false} linkToolbar={mode==='blocks'} filePanel={mode==='blocks'}>{mode==='blocks'&&!disabled&&<SuggestionMenuController triggerCharacter="/" getItems={slashItems}/>}</BlockNoteView></div>
       {mode==='markdown'&&<textarea className="markdown-source" aria-label="마크다운 본문" spellCheck={false} placeholder={'# 제목\n\n여기에 마크다운을 작성하세요.'} value={source} disabled={disabled} onChange={event=>{const body=event.target.value;setSource(body);sourceDirty.current=true;onChange({body,body_doc:null,body_format:'markdown'});}}/>}
     </div>
     <div className="document-shortcuts"><span><kbd>Enter</kbd> 새 블록</span><span><kbd>Shift ↵</kbd> 줄바꿈</span><span><kbd>#</kbd> 제목</span><span><kbd>[ ]</kbd> 할 일</span><span><kbd>⌘ / Ctrl B</kbd> 굵게</span></div>
@@ -99,6 +106,6 @@ function blockTextLength(block){
 
 export function BlockReader({post}){
   const editor=useCreateBlockNote({schema,dictionary,initialContent:initialBlocks(post)});
-  useEffect(()=>{if(!post.body_doc){const blocks=editor.tryParseMarkdownToBlocks(post.body);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);}},[editor]);
+  useEffect(()=>{if(!post.body_doc){const blocks=parseEmbedMarkdown(editor,post.body);editor.replaceBlocks(editor.document,blocks.length?blocks:[{type:'paragraph'}]);}},[editor]);
   return <div className="block-document"><BlockNoteView editor={editor} theme="dark" editable={false} formattingToolbar={false} sideMenu={false} slashMenu={false} linkToolbar={false} filePanel={false}/></div>;
 }
