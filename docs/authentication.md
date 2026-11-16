@@ -131,7 +131,7 @@ GitHub OAuth App의 Homepage URL은 `https://21st-ark.dev`로 등록합니다. �
 | 이전 도메인(전환 호환) | `https://21stark.dev` | `https://21stark.dev/api/auth/callback/github` | `https://21stark.dev/api/auth/callback/google` |
 | 메인 운영 도메인 | `https://21st-ark.dev` | `https://21st-ark.dev/api/auth/callback/github` | `https://21st-ark.dev/api/auth/callback/google` |
 
-로컬은 `.dev.vars`에 `GITHUB_CLIENT_ID`와 `GITHUB_CLIENT_SECRET`을 저장합니다. 운영 배포 시 API Worker에 같은 이름의 설정을 추가해야 하며, 시크릿은 반드시 Secret 형식으로 설정합니다. 현재 작업에서는 운영 배포나 운영 설정 변경을 하지 않습니다. 인증 요청은 접속 중인 허용 도메인의 콜백 주소를 명시합니다. 콜백 URL 와일드카드는 필요하지 않습니다.
+로컬은 `.dev.vars`에 `GITHUB_CLIENT_ID`와 `GITHUB_CLIENT_SECRET`을 저장합니다. 운영 API Worker에도 같은 이름의 설정이 필요하며, 시크릿은 반드시 Secret 형식으로 설정합니다. 2026-11-16 운영 설정에서 두 제공자의 Secret 존재를 확인했으며 값은 열람하지 않았습니다. 인증 요청은 접속 중인 허용 도메인의 콜백 주소를 명시합니다. 콜백 URL 와일드카드는 필요하지 않습니다.
 
 `0008_github_login.sql`은 GitHub 사용자 ID 연결과 10분 만료 OAuth 상태를 별도 테이블에 보관합니다. state는 단일 사용이며 HttpOnly 쿠키·origin에 바인딩하고 PKCE S256을 사용합니다. 토큰은 서버에서만 교환하며 저장하거나 브라우저에 반환하지 않습니다. 최소 읽기 권한 `read:user user:email`로 사용자 ID와 인증된 기본 이메일을 확인합니다. 비공개 이메일도 지원하며, 인증되지 않은 이메일은 거절합니다. GitHub 이름·이메일만으로 기존 계정을 자동 병합하지 않습니다. 연결은 기존 계정의 인증 세션과 같은 이메일을 요구합니다.
 

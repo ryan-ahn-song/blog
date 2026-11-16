@@ -1,7 +1,7 @@
 # 보안·로딩 개선 검증 기록
 
 작성일: 2026-11-16. 기준: 사용자 제공 보고서.zip, 커밋 8ee85d8.
-로컬 코드와 로컬 D1에 반영했으며 운영 DB·Cloudflare 배포는 실행하지 않았습니다.
+최초 검증은 로컬 코드·로컬 D1에서 수행했습니다. 이후 사용자 요청에 따라 `04c12e6`을 푸시하고 Cloudflare 연결 빌드로 운영 마이그레이션·API/웹 배포를 완료했습니다. 최종 운영 설정·도메인 전환·실측 확인은 [OWASP 재점검 기록](./owasp-review.md)을 참고하세요.
 
 ## 원인과 수정
 
@@ -43,13 +43,13 @@
 - 실제 로컬 브라우저에서 기존 포스트 본문·이미지 표시 및 홈 복귀 확인. 사용자 데이터 수정 없이 수행.
 - npm audit: 알려진 취약점 0개. 작업 파일의 시크릿 패턴 검사: 일치 0개. 완전한 비밀정보/침투 테스트 보증은 아닙니다.
 
-## 운영 반영 전에 필요한 작업
+## 운영 반영 결과와 후속 계측
 
-1. 0014_security_performance.sql → 0015_media_references.sql 순서로 운영 마이그레이션 후 API와 웹을 함께 배포합니다. npm run deploy:backend는 원격 마이그레이션을 먼저 실행하도록 되어 있습니다. 현재는 실행하지 않았습니다.
-2. 배포 후 R2 버킷의 Public Development URL(r2.dev)과 media.21stark.dev 공개 도메인을 끕니다. 앱은 /api/media로 이미지를 제공합니다. **공개 R2 원본이 남아 있으면 인증 프록시를 우회할 수 있습니다.** 기존 운영 코드는 그 주소에 의존하므로 배포 전에 먼저 끄지 마세요. 이미 배포된 외부 캐시는 별도 삭제/만료 확인이 필요합니다.
-3. CSP/보안 헤더가 실제 HTML 응답에 적용되는지 확인합니다. Google/GitHub 콜백, R2 이미지, 선택 후 YouTube/Vimeo 재생을 확인합니다. 로컬 Vite는 프로덕션 Worker 헤더를 적용하지 않습니다.
-4. Cloudflare WAF/Rate Limiting과 예산 알림을 점검합니다. 직접 API Worker 접근에서도 CF-Connecting-IP가 Cloudflare에 의해 설정되는 경로만 사용해야 합니다.
-5. D1 Insights와 브라우저 Network/Performance에서 실제 느린 요청, rows_read, p95, LCP/INP를 계측합니다. 현재 검색의 한국어 부분 문자열 의미는 유지했습니다. 데이터 증가 시 본문 전체 검색의 FTS5/trigram 전환은 별도 검색 품질 검증 후 진행해야 합니다.
+1. 0014_security_performance.sql → 0015_media_references.sql → 0016_session_inactivity.sql이 연결 빌드의 원격 마이그레이션·배포 대상에 포함되었습니다. 운영 공개 API와 웹의 변경된 동작을 확인했습니다.
+2. R2 공개 개발 URL과 media.21stark.dev 접근을 모두 비활성화했습니다. 앱의 /api/media 이미지는 200, 공개 원본은 401로 확인했습니다. 외부에 이미 복사된 파일은 회수할 수 없습니다.
+3. 실제 HTML에 CSP/보안 헤더가 적용되고 Google/GitHub 제공자 로그인 화면으로 진입하는 것을 확인했습니다. 계정 인증·동의 후 귀환 전체 흐름은 사용자 확인이 필요합니다. 로컬 Vite는 프로덕션 Worker 헤더를 적용하지 않습니다.
+4. 메인 도메인에 무료 WAF API burst 제한을 활성화하고, 공개 API/웹 workers.dev와 preview URL을 비활성화했습니다. 두 도메인 TLS/HTTPS 설정도 강화했습니다. 유료 서비스·자동 결제·예산 한도 설정은 추가하지 않았습니다.
+5. 데이터가 쌓이면 D1 Insights와 브라우저 Performance에서 rows_read, p95, LCP/INP를 계측해야 합니다. 현재 검색의 한국어 부분 문자열 의미는 유지했습니다. 본문 전체 검색의 FTS5/trigram 전환과 영구 집계 테이블은 운영 쿼리 비용·검색 품질을 확인한 뒤 결정합니다.
 
 ## 남은 한계
 

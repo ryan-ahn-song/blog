@@ -16,7 +16,14 @@
 
 - Cloudflare API Worker의 공개 Production URL 및 Preview URL 비활성화: 브라우저에서 적용.
 - R2 Public Development URL: 기존 비활성 상태 확인.
-- R2 Custom Domain / WAF / 최종 배포 결과: 아래에 작업 완료 후 실측 결과 기록.
+- R2 `media.21stark.dev` Custom Domain의 Access를 Disabled로 변경. 공개 개발 URL도 Disabled 유지. 기존 객체를 삭제하거나 도메인을 제거하지 않음. 공개 원본 요청은 401, 같은 포스트의 `/api/media/posts/...` 요청은 200/image/png/private,no-store 확인. 이미 외부에 복사된 파일까지 회수할 수는 없음.
+- 메인 도메인 WAF Rate limiting `API burst protection` 활성화: `starts_with(http.request.uri.path, "/api/")`, IP당 200 requests/10 seconds 초과 시 10 seconds Block. 무료 제공 한도 안에서 구성했으며 서버의 사용자/작업별 제한과 함께 적용. 운영 부하 테스트로 차단을 고의 유발하지는 않음.
+- 두 도메인 모두 SSL/TLS Full (strict), Always Use HTTPS On, Minimum TLS 1.2, TLS 1.3 On 확인. HSTS는 앱 응답에서 max-age=31536000 적용. preload/includeSubDomains는 추가하지 않음.
+- 코드 커밋 `04c12e6`의 Cloudflare 연결 빌드 성공 확인. API 빌드 `535ebd95-8a88-45cb-b567-c8ed4b3b280a`는 원격 D1 마이그레이션 후 배포하는 `npm run deploy:backend` 실행. 0014/0015/0016을 포함한 새 API 동작 및 웹 보안 헤더를 운영에서 확인.
+- `https://21st-ark.dev/` 200, 실제 HTML CSP/HSTS/DENY/nosniff/canonical 확인. `https://21stark.dev/` 308 → 메인 도메인. API/웹 workers.dev 직접 주소는 각각 404.
+- 익명 `/api/auth/me`는 no-store, 공개 포스트 목록은 body/body_doc를 제외한 작은 DTO. 실제 운영 브라우저에서 홈/트렌딩/포스트 이미지가 정상 표시됨을 확인.
+- Google 계정 선택 화면과 GitHub 로그인 화면까지 메인 도메인 callback으로 정상 진입. 실제 계정 인증·동의·2FA를 대신 완료하지 않았으므로 제공자 로그인 후 귀환 전체 흐름은 사용자 확인이 필요함.
+- 민감한 Cloudflare 스크린샷은 `artifacts/`에 로컬 보관하고 Git에서 제외. 운영 사용자/포스트를 변경하거나 삭제하여 테스트하지 않음.
 
 ## 별도 한계
 

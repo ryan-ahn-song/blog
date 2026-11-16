@@ -44,6 +44,7 @@ dumps/
 *.har
 playwright-report/
 test-results/
+artifacts/
 
 # Machine/editor metadata
 *.tsbuildinfo
