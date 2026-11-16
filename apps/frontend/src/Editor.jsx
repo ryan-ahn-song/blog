@@ -47,19 +47,19 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
       const result = await api('/api/posts' + (record ? '/' + record.id : ''), jsonRequest(record ? 'PUT' : 'POST', { title:value.title,summary:value.summary,body:value.body,body_doc:value.body_doc,body_format:value.body_format,category:value.category,topic_ids:value.topic_ids??[value.category],image_key:value.image_key,writer_category_id:value.writer_category_id,writer_tag_ids:value.writer_tag_ids,revision:record?.revision,status }));
       setRecord(result.post); setForm(withLabels(result.post)); setDirty(false);
       try { localStorage.removeItem(storageKey); } catch {}
-      setNotice(status === 'published' ? '업로드했습니다. 홈에서 글을 읽을 수 있어요.' : '임시저장했습니다. 내 글 관리에서 이어 쓸 수 있어요.');
+      setNotice(status === 'published' ? '업로드했습니다. 홈에서 포스트를 읽을 수 있어요.' : '임시저장했습니다. 내 포스트 관리에서 이어 쓸 수 있어요.');
       onSaved(result.post);
     } catch (e) { setError(e.message); } finally { setPending(false); }
   }
   const disabled=pending||uploads>0||taxonomyBusy,categories=topics,selectedTopic=(form.topic_ids??[]).find(id=>id!==form.category&&topics.some(t=>t.id===id))??form.category,writerId=record?.writer?.id??record?.author_id??user.id;
   function changeCategory(id){const topic=topics.find(t=>t.id===id);if(!topic)return;setForm(f=>({...f,category:topic.category,topic_ids:[...new Set([topic.category,topic.id])]}));setDirty(true);setNotice('');}
-  return <section className="editor split-editor" aria-label="글 작성">
-    <aside className="editor-details" aria-label="글 설정">
-      <div className="editor-details-heading"><h2>{record?'글 편집':'새로운 글'}</h2></div>
+  return <section className="editor split-editor" aria-label="포스트 작성">
+    <aside className="editor-details" aria-label="포스트 설정">
+      <div className="editor-details-heading"><h2>{record?'포스트 편집':'새로운 포스트'}</h2></div>
       <form id="post-editor" onSubmit={event=>{event.preventDefault();save('published');}}><fieldset disabled={disabled}>
         <label htmlFor="post-category">전체 분류</label><select id="post-category" value={selectedTopic} disabled={!categories.length} onChange={event=>changeCategory(event.target.value)}>{categories.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
-        <div className="editor-field-heading"><label htmlFor="post-title">제목</label><span>{form.title.length}/160</span></div><textarea className="editor-title" id="post-title" rows={2} placeholder="글의 제목" required maxLength={160} value={form.title} onChange={event=>change('title',event.target.value)}/>
-        <div className="editor-field-heading"><label htmlFor="post-summary">짧은 소개</label><span>선택 · {form.summary.length}/280</span></div><textarea id="post-summary" rows={3} maxLength={280} placeholder="어떤 내용의 글인가요?" value={form.summary} onChange={event=>change('summary',event.target.value)}/>
+        <div className="editor-field-heading"><label htmlFor="post-title">제목</label><span>{form.title.length}/160</span></div><textarea className="editor-title" id="post-title" rows={2} placeholder="포스트의 제목" required maxLength={160} value={form.title} onChange={event=>change('title',event.target.value)}/>
+        <div className="editor-field-heading"><label htmlFor="post-summary">짧은 소개</label><span>선택 · {form.summary.length}/280</span></div><textarea id="post-summary" rows={3} maxLength={280} placeholder="어떤 내용의 포스트인가요?" value={form.summary} onChange={event=>change('summary',event.target.value)}/>
         <WriterTaxonomyFields writerId={writerId} canManage={writerId===user.id} value={form} disabled={disabled} onBusy={setTaxonomyBusy} onChange={value=>{setForm(previous=>({...previous,...value}));setDirty(true);setNotice('');}}/>
         <div className="cover-label"><label htmlFor="post-cover">대표 이미지 <span>선택</span></label>{form.image&&<button type="button" className="text-button" onClick={()=>{change('image_key',null);change('image',null);}}>제거</button>}</div>
         {form.image&&<img className="editor-cover" src={form.image} alt="업로드한 대표 이미지"/>}<label className="cover-upload-button" htmlFor="post-cover"><span>＋ {form.image?'이미지 변경':'이미지 추가'}</span><small>권장 1600 × 900px · 16:9<br/>JPG, PNG, WebP · 최대 8MB</small><input className="sr-only" id="post-cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover}/></label>

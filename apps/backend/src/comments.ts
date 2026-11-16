@@ -15,7 +15,7 @@ export async function handleComments(request:Request,env:Env){
   const url=new URL(request.url),match=url.pathname.match(/^\/api\/posts\/([\w-]+)\/comments(?:\/([\w-]+))?$/)!;
   const postId=match[1],commentId=match[2];
   if(!((request.method==='GET'&&!commentId)||(request.method==='POST'&&!commentId)||(['PATCH','DELETE'].includes(request.method)&&commentId)))return json({error:'지원하지 않는 요청입니다.'},405,{Allow:commentId?'PATCH, DELETE':'GET, POST'});
-  if(!await env.DB.prepare(activePost).bind(postId).first())throw new HttpError(404,'댓글을 볼 수 있는 글을 찾을 수 없습니다.');
+  if(!await env.DB.prepare(activePost).bind(postId).first())throw new HttpError(404,'댓글을 볼 수 있는 포스트를 찾을 수 없습니다.');
   if(request.method==='GET'){
     const actor=await currentUser(request,env),cursor=url.searchParams.get('cursor');
     const values:(string|number)[]=[postId];let where=visible;
@@ -36,17 +36,17 @@ export async function handleComments(request:Request,env:Env){
     if(existing.author_id!==actor.id&&(request.method!=='DELETE'||actor.role!=='admin'))throw new HttpError(403,request.method==='DELETE'?'본인의 댓글만 삭제할 수 있습니다.':'본인의 댓글만 수정할 수 있습니다.');
     if(request.method==='DELETE'){
       const deleted=await env.DB.prepare('DELETE FROM post_comments WHERE id=? AND post_id=? AND revision=? AND EXISTS('+activePost+') RETURNING id').bind(commentId,postId,body.revision,postId).first();
-      if(!deleted)throw new HttpError(409,'댓글이나 글이 변경되었습니다. 새로고침 후 다시 삭제해 주세요.');
+      if(!deleted)throw new HttpError(409,'댓글이나 포스트가 변경되었습니다. 새로고침 후 다시 삭제해 주세요.');
       return json({deleted:true,id:commentId});
     }
     const updated=await env.DB.prepare('UPDATE post_comments SET body=?,updated_at=?,revision=revision+1 WHERE id=? AND post_id=? AND revision=? AND author_id=? AND EXISTS('+activePost+') RETURNING id').bind((body.body as string).replace(/\r\n?/g,'\n').trim(),now(),commentId,postId,body.revision,actor.id,postId).first();
-    if(!updated)throw new HttpError(409,'댓글이나 글이 변경되었습니다. 수정 내용을 복사해 두고 다시 열어 주세요.');
+    if(!updated)throw new HttpError(409,'댓글이나 포스트가 변경되었습니다. 수정 내용을 복사해 두고 다시 열어 주세요.');
     const row=await env.DB.prepare(selection+' WHERE '+visible+' AND c.id=?').bind(postId,commentId).first<CommentRow>();
     return json({comment:row?commentData(row,request,env,actor):null});
   }
   const id=randomUUID();
   const created=await env.DB.prepare("INSERT INTO post_comments(id,post_id,author_id,body) SELECT ?,p.id,?,? FROM posts p JOIN auth_users w ON w.id=p.author_id WHERE p.id=? AND p.status='published' AND w.disabled=0 AND EXISTS(SELECT 1 FROM auth_users a WHERE a.id=? AND a.disabled=0) RETURNING id").bind(id,actor.id,(body.body as string).replace(/\r\n?/g,'\n').trim(),postId,actor.id).first();
-  if(!created)throw new HttpError(404,'댓글을 작성할 수 있는 글을 찾을 수 없습니다.');
+  if(!created)throw new HttpError(404,'댓글을 작성할 수 있는 포스트를 찾을 수 없습니다.');
   const row=await env.DB.prepare(selection+' WHERE '+visible+' AND c.id=?').bind(postId,id).first<CommentRow>();
   return json({comment:row?commentData(row,request,env,actor):null},201);
 }

@@ -18,7 +18,7 @@ export function WriterTaxonomyFields({writerId,canManage,value,onChange,disabled
   const availableTags=[...new Map([...currentTags,...(catalog.data?.tags??[])].map(tag=>[tag.id,tag])).values()];
   async function create(kind,name){
     const normalized=name.normalize('NFKC').trim().replace(/\s+/g,' ').replace(kind==='tag'?/^#+/:/^$/,'').trim();if(!normalized)return;
-    if(kind==='tag'&&tags.length>=10){setError('태그는 글마다 10개까지 추가할 수 있어요.');return;}
+    if(kind==='tag'&&tags.length>=10){setError('태그는 포스트마다 10개까지 추가할 수 있어요.');return;}
     const list=kind==='tag'?catalog.data?.tags:catalog.data?.categories,existing=list?.find(label=>label.name.toLocaleLowerCase()===normalized.toLocaleLowerCase());
     if(!existing&&!canManage){setError('이 필자가 만든 분류와 태그만 선택할 수 있어요.');return;}
     setPending(true);onBusy(true);setError('');
@@ -46,9 +46,9 @@ export function WriterTaxonomySidebar({writerId,user,total,version,filters,onFil
   const data=catalog.data;
   return <aside className="writer-taxonomy-sidebar" aria-label="필자의 분류와 태그">
     <section><div className="writer-taxonomy-heading"><h3>개인 분류</h3>{own&&<button onClick={()=>setManaging(true)}>관리</button>}</div>
-      <button className="writer-category-row" aria-pressed={!filters.category&&!filters.tag} onClick={()=>onFilter('clear')}><span>전체 글</span><small>{total}</small></button>
+      <button className="writer-category-row" aria-pressed={!filters.category&&!filters.tag} onClick={()=>onFilter('clear')}><span>전체 포스트</span><small>{total}</small></button>
       {data?.categories.map(label=><button className="writer-category-row" key={label.id} aria-pressed={filters.category===label.id} onClick={()=>onFilter('category',label.id)}><span>{label.name}</span><small>{label.post_count}</small></button>)}
-      {!catalog.loading&&!catalog.error&&!data?.categories.length&&<p className="taxonomy-empty">아직 분류한 글이 없어요.</p>}
+      {!catalog.loading&&!catalog.error&&!data?.categories.length&&<p className="taxonomy-empty">아직 분류한 포스트가 없어요.</p>}
     </section>
     <section><h3>태그</h3><div className="writer-tag-list">{data?.tags.map(label=><button key={label.id} aria-pressed={filters.tag===label.id} onClick={()=>onFilter('tag',label.id)}>#{label.name}<small>{label.post_count}</small></button>)}</div>{!catalog.loading&&!catalog.error&&!data?.tags.length&&<p className="taxonomy-empty">아직 태그가 없어요.</p>}</section>
     {catalog.loading&&<p className="taxonomy-empty" role="status">불러오는 중…</p>}{catalog.error&&<p className="taxonomy-error" role="alert">{catalog.error} <button onClick={catalog.reload}>다시 시도</button></p>}
@@ -60,14 +60,14 @@ function TaxonomyManager({writerId,open,onClose,version,onChanged}){
   const dialog=useRef(null),catalog=useTaxonomy(writerId,open?'manage':'public',version),[kind,setKind]=useState('category'),[name,setName]=useState(''),[editing,setEditing]=useState(null),[pending,setPending]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(open&&!dialog.current.open)dialog.current.showModal();else if(!open&&dialog.current.open)dialog.current.close();if(open){setName('');setEditing(null);setError('');}},[open]);
   async function save(event){event.preventDefault();if(pending||!name.trim())return;setPending(true);setError('');try{await api('/api/writers/'+writerId+'/taxonomy'+(editing?'/'+editing:''),jsonRequest(editing?'PATCH':'POST',{kind,name}));setName('');setEditing(null);onChanged();catalog.reload();}catch(e){setError(e.message);}finally{setPending(false);}}
-  async function remove(label){if(pending||!window.confirm('“'+label.name+'” '+(kind==='category'?'분류를':'태그를')+' 삭제할까요? 글은 유지되고 이 항목만 글에서 해제됩니다.'))return;setPending(true);setError('');try{await api('/api/writers/'+writerId+'/taxonomy/'+label.id,{method:'DELETE'});if(editing===label.id){setEditing(null);setName('');}onChanged();catalog.reload();}catch(e){setError(e.message);}finally{setPending(false);}}
+  async function remove(label){if(pending||!window.confirm('“'+label.name+'” '+(kind==='category'?'분류를':'태그를')+' 삭제할까요? 포스트는 유지되고 이 항목만 포스트에서 해제됩니다.'))return;setPending(true);setError('');try{await api('/api/writers/'+writerId+'/taxonomy/'+label.id,{method:'DELETE'});if(editing===label.id){setEditing(null);setName('');}onChanged();catalog.reload();}catch(e){setError(e.message);}finally{setPending(false);}}
   const labels=kind==='category'?catalog.data?.categories:catalog.data?.tags;
   return <dialog className="auth-dialog taxonomy-manager" ref={dialog} aria-labelledby="taxonomy-manager-title" onCancel={event=>{if(pending)event.preventDefault();else onClose();}} onClose={onClose}>
-    <button className="auth-close" aria-label="분류 관리 닫기" disabled={pending} onClick={onClose}>×</button><h2 id="taxonomy-manager-title">분류와 태그 관리</h2><p className="settings-note">내 글에서 사용할 분류와 태그를 관리하세요.</p>
+    <button className="auth-close" aria-label="분류 관리 닫기" disabled={pending} onClick={onClose}>×</button><h2 id="taxonomy-manager-title">분류와 태그 관리</h2><p className="settings-note">내 포스트에서 사용할 분류와 태그를 관리하세요.</p>
     <div className="taxonomy-kind-tabs">{[['category','개인 분류'],['tag','태그']].map(([value,label])=><button key={value} aria-pressed={kind===value} disabled={pending} onClick={()=>{setKind(value);setEditing(null);setName('');setError('');}}>{label}</button>)}</div>
     <form onSubmit={save} className="taxonomy-manager-form"><label htmlFor="taxonomy-label-name">{editing?'이름 변경':kind==='category'?'새 분류':'새 태그'}</label><div><input id="taxonomy-label-name" value={name} maxLength={kind==='category'?40:30} required disabled={pending} onChange={event=>setName(event.target.value)}/><button className="pill" disabled={pending||!name.trim()}>{editing?'저장':'추가'}</button>{editing&&<button type="button" className="text-button" onClick={()=>{setEditing(null);setName('');}}>취소</button>}</div></form>
     {error&&<p className="auth-error" role="alert">{error}</p>}{catalog.error&&<p className="auth-error" role="alert">{catalog.error}</p>}
-    <div className="taxonomy-management-list">{labels?.map(label=><div key={label.id}><span>{kind==='tag'?'#':''}{label.name}<small>업로드한 글 {label.post_count}개</small></span><button disabled={pending} aria-label={label.name+' 이름 변경'} onClick={()=>{setEditing(label.id);setName(label.name);}}>이름 변경</button><button className="taxonomy-delete" disabled={pending} aria-label={label.name+' 삭제'} onClick={()=>remove(label)}>삭제</button></div>)}</div>
+    <div className="taxonomy-management-list">{labels?.map(label=><div key={label.id}><span>{kind==='tag'?'#':''}{label.name}<small>업로드한 포스트 {label.post_count}개</small></span><button disabled={pending} aria-label={label.name+' 이름 변경'} onClick={()=>{setEditing(label.id);setName(label.name);}}>이름 변경</button><button className="taxonomy-delete" disabled={pending} aria-label={label.name+' 삭제'} onClick={()=>remove(label)}>삭제</button></div>)}</div>
     {!catalog.loading&&!labels?.length&&<p className="taxonomy-empty">아직 만든 {kind==='category'?'분류가':'태그가'} 없어요.</p>}
   </dialog>;
 }

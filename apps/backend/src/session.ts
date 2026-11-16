@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './http';
 import { mediaUrl } from './media';
 export type Role = 'reader' | 'author' | 'admin';
-export type UserRow = { id: string; email: string; name: string; bio: string; avatar_key:string|null; cover_key:string|null; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number };
+export type UserRow = { id: string; email: string; name: string; bio: string; avatar_key:string|null; cover_key:string|null; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number; login_version:number };
 export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
 export const now = () => Math.floor(Date.now() / 1000);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -30,12 +30,14 @@ export function checkOrigin(request: Request) {
   const origin = request.headers.get('Origin');
   if (request.headers.get('Sec-Fetch-Site') === 'cross-site' || !(origin === new URL(request.url).origin || (local(request) && ['http://127.0.0.1:3000', 'http://localhost:3000'].includes(origin ?? '')))) throw new HttpError(403, '허용되지 않은 요청입니다.');
 }
-export async function createSession(request: Request, env: AuthEnv, userId: string) {
+export async function createSession(request: Request, env: AuthEnv, userId: string, loginVersion?:number) {
   const token = randomBytes(32).toString('hex');
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at<=? OR token_hash=?').bind(now(), digest(readCookie(request, 'session'))),
-    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(digest(token), userId, now() + 604800),
+  const result=await env.DB.batch([
+    env.DB.prepare('DELETE FROM auth_pending_signups WHERE token_hash=?').bind(digest(readCookie(request, 'signup'))),
+    env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at<=? OR (token_hash=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?)))').bind(now(),digest(readCookie(request,'session')),userId,loginVersion??null,loginVersion??null),
+    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) SELECT ?,id,? FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?) RETURNING user_id').bind(digest(token),now()+604800,userId,loginVersion??null,loginVersion??null),
   ]);
+  if(!result[2].results.length)throw new HttpError(401,'로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
   return cookie(request, 'session', token, 604800);
 }
 export async function limited(db: D1Database, key: string, max: number) {

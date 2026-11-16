@@ -21,8 +21,10 @@ export default function MoreMenu({user,onSettings,onLogin,onAdmin,onLogout,loggi
     <button ref={trigger} className={'rail-button '+(open?'active':'')} onClick={()=>setOpen(value=>!value)} aria-label="더 보기" title="더 보기" aria-haspopup="menu" aria-expanded={open} aria-controls={open?'more-menu':undefined}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
     {open&&<div id="more-menu" className="more-menu" ref={panel} role="menu" aria-label="더 보기" onKeyDown={move} onBlur={event=>{if(event.relatedTarget&&!event.currentTarget.contains(event.relatedTarget)&&!anchor.current?.contains(event.relatedTarget))setOpen(false);}}>
       {user?<><p className="more-menu-account"><strong>{user.name}</strong><span>{user.email}</span></p><button role="menuitem" onClick={()=>choose(()=>onSettings('account'))}>계정 및 설정<span>↗</span></button></>:<button role="menuitem" onClick={()=>choose(onLogin)}>로그인</button>}
+      {user?.role==='reader'&&<button role="menuitem" onClick={()=>choose(()=>onSettings('apply'))}>작성자 신청하기</button>}
       <button role="menuitem" onClick={()=>choose(()=>onSettings('display'))}>화면 설정</button>
       <button role="menuitem" onClick={()=>choose(()=>onSettings('help'))}>도움말 및 피드백</button>
+      <button role="menuitem" onClick={()=>choose(()=>onSettings('legal'))}>약관 및 개인정보처리방침</button>
       {user?.role==='admin'&&<><hr/><button role="menuitem" onClick={()=>choose(onAdmin)}>멤버 관리<span>관리자</span></button></>}
       {user&&<><hr/><button role="menuitem" disabled={loggingOut} onClick={()=>choose(onLogout)}>{loggingOut?'로그아웃 중…':'로그아웃'}</button></>}
     </div>}

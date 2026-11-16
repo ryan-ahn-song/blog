@@ -1,3 +1,4 @@
+import { cleanupAccountMedia } from './account';
 import { handleAuth } from './auth';
 import { handleAdmin } from './admin';
 import { handlePosts, handleMedia, handleReaction } from './posts';
@@ -6,14 +7,17 @@ import { handleSubscriptions } from './subscriptions';
 import { recordRead, authorDashboard } from './analytics';
 import { handleTaxonomy } from './taxonomy';
 import { handleComments } from './comments';
+import { handleApplications } from './applications';
 import { HttpError, json } from './http';
 import type { AuthEnv } from './session';
 export interface Env extends AuthEnv { MEDIA: R2Bucket; MEDIA_BASE_URL?: string }
 export default {
+  async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){ctx.waitUntil(cleanupAccountMedia(env));},
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     try {
       if (path.startsWith('/api/auth/')) return await handleAuth(request, env);
+      if(path==='/api/writer-applications'||/^\/api\/admin\/writer-applications(?:\/[\w-]+)?$/.test(path))return await handleApplications(request,env);
       if (path.startsWith('/api/admin/')) return await handleAdmin(request, env);
       if(/^\/api\/writers\/[\w-]+\/taxonomy(?:\/[\w-]+)?$/.test(path))return await handleTaxonomy(request,env);
       if(/^\/api\/posts\/[\w-]+\/comments(?:\/[\w-]+)?$/.test(path))return await handleComments(request,env);

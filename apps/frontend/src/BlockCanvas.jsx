@@ -8,7 +8,7 @@ import './block-editor.css';
 
 const supported=['paragraph','heading','bulletListItem','numberedListItem','checkListItem','toggleListItem','quote','codeBlock','table','divider','image'];
 const schema=BlockNoteSchema.create({blockSpecs:Object.fromEntries(Object.entries(defaultBlockSpecs).filter(([type])=>supported.includes(type)))});
-const dictionary={...ko,placeholders:{...ko.placeholders,default:"글을 쓰거나 '/'를 눌러 블록을 추가하세요",emptyDocument:"글을 쓰거나 '/'를 눌러 블록을 추가하세요"}};
+const dictionary={...ko,placeholders:{...ko.placeholders,default:"포스트를 쓰거나 '/'를 눌러 블록을 추가하세요",emptyDocument:"포스트를 쓰거나 '/'를 눌러 블록을 추가하세요"}};
 const initialBlocks=value=>Array.isArray(value.body_doc)&&value.body_doc.length?value.body_doc:(value.body||'').split(/\n{2,}/).map(text=>({type:'paragraph',content:text}));
 
 export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile,disabled,title,bodyLength=0},ref){
@@ -45,7 +45,7 @@ export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile
   function download(){
     const value=snapshot();const markdown=value.body.replace(/\(\/api\/media\/(posts\/[\w-]+\/[\w-]+\.(?:jpg|png|webp))\)/g,(_,key)=>'('+location.origin+'/api/media/'+key+')');
     const url=URL.createObjectURL(new Blob([markdown],{type:'text/markdown;charset=utf-8'}));
-    const a=document.createElement('a');a.href=url;a.download=(title?.trim()||'새로운 글').replace(/[<>:"/\\|?*]/g,'-')+'.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const a=document.createElement('a');a.href=url;a.download=(title?.trim()||'새로운 포스트').replace(/[<>:"/\\|?*]/g,'-')+'.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   function chooseImages(){
     setError('');
@@ -80,7 +80,7 @@ export default forwardRef(function BlockCanvas({initialValue,onChange,uploadFile
     catch(e){setError(e.message||'마크다운 파일을 불러오지 못했습니다.');}finally{silent.current=false;}
   }
   return <section className="document-editor" aria-label="본문 편집">
-    <div className="document-toolbar"><div className="document-mode-controls"><div className="segmented" role="group" aria-label="본문 편집 방식">{[['blocks','블록'],['markdown','마크다운'],['preview','미리보기']].map(([value,label])=><button key={value} type="button" aria-pressed={mode===value} disabled={disabled||imagePending} onClick={()=>switchMode(value)}>{label}</button>)}</div><span className="editor-body-count">본문 {bodyLength.toLocaleString()} / 80,000자</span></div><div className="document-tools"><button className="insert-image-button" type="button" aria-label="본문에 이미지 추가" disabled={disabled||imagePending||mode==='preview'} onMouseDown={event=>event.preventDefault()} onClick={chooseImages}>{imagePending?'업로드 중…':'＋ 이미지 추가'}</button><button type="button" title="마크다운 파일 불러오기" aria-label="마크다운 파일 불러오기" disabled={disabled||imagePending} onClick={()=>importInput.current.click()}>불러오기</button><button type="button" title="글 다운로드" aria-label="글 다운로드" disabled={disabled||imagePending} onClick={download}>글 다운로드</button><input ref={importInput} className="sr-only" type="file" accept=".md,.markdown,text/markdown,text/plain" onChange={importMarkdown} tabIndex={-1}/><input ref={imageInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="본문 이미지 파일" onChange={insertImages} tabIndex={-1}/></div></div>
+    <div className="document-toolbar"><div className="document-mode-controls"><div className="segmented" role="group" aria-label="본문 편집 방식">{[['blocks','블록'],['markdown','마크다운'],['preview','미리보기']].map(([value,label])=><button key={value} type="button" aria-pressed={mode===value} disabled={disabled||imagePending} onClick={()=>switchMode(value)}>{label}</button>)}</div><span className="editor-body-count">본문 {bodyLength.toLocaleString()} / 80,000자</span></div><div className="document-tools"><button className="insert-image-button" type="button" aria-label="본문에 이미지 추가" disabled={disabled||imagePending||mode==='preview'} onMouseDown={event=>event.preventDefault()} onClick={chooseImages}>{imagePending?'업로드 중…':'＋ 이미지 추가'}</button><button type="button" title="마크다운 파일 불러오기" aria-label="마크다운 파일 불러오기" disabled={disabled||imagePending} onClick={()=>importInput.current.click()}>불러오기</button><button type="button" title="포스트 다운로드" aria-label="포스트 다운로드" disabled={disabled||imagePending} onClick={download}>포스트 다운로드</button><input ref={importInput} className="sr-only" type="file" accept=".md,.markdown,text/markdown,text/plain" onChange={importMarkdown} tabIndex={-1}/><input ref={imageInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="본문 이미지 파일" onChange={insertImages} tabIndex={-1}/></div></div>
     {imagePending&&<p className="document-upload-status" role="status">이미지를 업로드하고 있어요. 완료되면 본문에 추가됩니다.</p>}
     {error&&<p className="auth-error" role="alert">{error}</p>}
     <div className="document-page">

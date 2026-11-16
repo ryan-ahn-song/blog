@@ -1,10 +1,11 @@
-import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { beginSignup } from './signup';
+import { randomBytes, createHash } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { HttpError, json } from './http';
 import { type AuthEnv, type UserRow, now, digest, cookie, readCookie, createSession, currentUser, local, limited } from './session';
 
 const keys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-type Flow = { nonce: string; verifier: string; origin: string; link_user_id: string | null; expires_at: number };
+type Flow = { nonce: string; verifier: string; origin: string; link_user_id: string | null; link_version:number; expires_at: number };
 function originFor(request: Request, env: AuthEnv) {
   const url = new URL(request.url);
   if (local(request)) {
@@ -30,7 +31,7 @@ export async function handleGoogle(request: Request, env: AuthEnv): Promise<Resp
     const user = await currentUser(request, env);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM auth_oauth_states WHERE expires_at<=?').bind(now()),
-      env.DB.prepare('INSERT INTO auth_oauth_states(state_hash,nonce,verifier,origin,link_user_id,expires_at) VALUES(?,?,?,?,?,?)').bind(digest(state), nonce, verifier, origin, user?.id ?? null, now() + 600),
+      env.DB.prepare('INSERT INTO auth_oauth_states(state_hash,nonce,verifier,origin,link_user_id,expires_at,link_version) VALUES(?,?,?,?,?,?,?)').bind(digest(state), nonce, verifier, origin, user?.id ?? null, now() + 600,user?.login_version??0),
     ]);
     const authorize = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authorize.search = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: origin + '/api/auth/callback/google', response_type: 'code', scope: 'openid email profile', state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', prompt: 'select_account' }).toString();
@@ -54,23 +55,17 @@ export async function handleGoogle(request: Request, env: AuthEnv): Promise<Resp
     let user = await env.DB.prepare('SELECT u.* FROM auth_google_accounts g JOIN auth_users u ON u.id=g.user_id WHERE g.subject=?').bind(payload.sub).first<UserRow>();
     if (flow.link_user_id) {
       const signedIn = await currentUser(request, env);
-      if (!signedIn || signedIn.id !== flow.link_user_id || signedIn.email.toLowerCase() !== email || (user && user.id !== signedIn.id)) return redirect(request, origin, 'auth_error=link');
-      if (!user) await env.DB.prepare('INSERT INTO auth_google_accounts(subject,user_id) VALUES(?,?)').bind(payload.sub, signedIn.id).run();
+      if (!signedIn || signedIn.id !== flow.link_user_id || signedIn.login_version!==flow.link_version || signedIn.email.toLowerCase() !== email || (user && user.id !== signedIn.id)) return redirect(request, origin, 'auth_error=link');
+      if (!user) {const linked=await env.DB.prepare('INSERT INTO auth_google_accounts(subject,user_id) SELECT ?,id FROM auth_users WHERE id=? AND login_version=? AND disabled=0 RETURNING user_id').bind(payload.sub,signedIn.id,flow.link_version).first();if(!linked)return redirect(request,origin,'auth_error=link');}
       user = signedIn;
     } else if (!user) {
       // Never link a password account merely because Google returns the same email.
       if (await env.DB.prepare('SELECT id FROM auth_users WHERE email=?').bind(email).first()) return redirect(request, origin, 'auth_error=existing');
-      const id = randomUUID();
-      const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 80) || email.split('@')[0] : email.split('@')[0];
-      const role = email === env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase() ? 'admin' : 'reader';
-      await env.DB.batch([
-        env.DB.prepare('INSERT INTO auth_users(id,email,name,role) VALUES(?,?,?,?)').bind(id, email, name, role),
-        env.DB.prepare('INSERT INTO auth_google_accounts(subject,user_id) VALUES(?,?)').bind(payload.sub, id),
-      ]);
-      user = await env.DB.prepare('SELECT * FROM auth_users WHERE id=?').bind(id).first<UserRow>();
+      const name = typeof payload.name === 'string' ? payload.name.trim().slice(0,80) || email.split('@')[0] : email.split('@')[0];
+      return beginSignup(request,env,origin,'google',payload.sub,email,name);
     }
     if (!user || user.disabled) return redirect(request, origin, 'auth_error=disabled');
-    return redirect(request, origin, 'auth=success', await createSession(request, env, user.id));
+    return redirect(request, origin, 'auth=success', await createSession(request, env, user.id,user.login_version));
   } catch {
     console.error('Google authentication failed');
     return redirect(request, origin, 'auth_error=google');

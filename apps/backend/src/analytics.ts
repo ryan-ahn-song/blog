@@ -10,7 +10,7 @@ export async function recordRead(request:Request,env:AuthEnv){
   checkOrigin(request);await readBody(request,256);
   const id=new URL(request.url).pathname.match(/^\/api\/posts\/([\w-]+)\/view$/)?.[1];
   const post=await env.DB.prepare("SELECT p.id,p.author_id FROM posts p JOIN auth_users u ON u.id=p.author_id WHERE p.id=? AND p.status='published' AND u.disabled=0").bind(id??'').first<{id:string;author_id:string}>();
-  if(!post)throw new HttpError(404,'글을 찾을 수 없습니다.');
+  if(!post)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   const actor=await currentUser(request,env);
   if(actor?.id===post.author_id||request.headers.get('DNT')==='1'||request.headers.get('Sec-GPC')==='1'||/bot|crawler|spider|preview/i.test(request.headers.get('User-Agent')??''))return json({recorded:false});
   const existing=readCookie(request,'visitor'),token=/^[a-f0-9]{64}$/.test(existing)?existing:randomBytes(32).toString('hex');

@@ -32,7 +32,7 @@ async function validateBodyImages(body:Record<string,unknown>,request:Request,en
     }
   }
   if(Array.isArray(body.body_doc))visit(body.body_doc as ImageBlock[]);
-  if(keys.size>50)throw new HttpError(400,'본문 이미지는 글 하나에 50개까지 사용할 수 있습니다.');
+  if(keys.size>50)throw new HttpError(400,'본문 이미지는 포스트 하나에 50개까지 사용할 수 있습니다.');
   const objects=await Promise.all([...keys].map(key=>env.MEDIA.head(key)));
   if(objects.some(object=>!object))throw new HttpError(400,'본문 이미지가 존재하지 않습니다. 다시 업로드해 주세요.');
 }
@@ -42,9 +42,9 @@ export async function handlePosts(request: Request, env: Env) {
     const actor=await currentUser(request,env), actorId=actor?.id??'';
     if (id) {
       const p = await env.DB.prepare(select + ' WHERE p.id=?').bind(actorId,actorId,id).first<PostRow>();
-      if (!p) throw new HttpError(404, '글을 찾을 수 없습니다.');
+      if (!p) throw new HttpError(404, '포스트를 찾을 수 없습니다.');
       if (p.status !== 'published') {
-        if (!actor || (actor.id !== p.author_id && actor.role !== 'admin')) throw new HttpError(404, '글을 찾을 수 없습니다.');
+        if (!actor || (actor.id !== p.author_id && actor.role !== 'admin')) throw new HttpError(404, '포스트를 찾을 수 없습니다.');
       }
       return json({ post: publicPost(p, env, request) });
     }
@@ -53,8 +53,8 @@ export async function handlePosts(request: Request, env: Env) {
     const bookmarked=url.searchParams.get('bookmarked')==='1';
     const subscribed=url.searchParams.get('subscribed')==='1';
     if (mine) await requireUser(request,env,['author','admin']);
-    if (bookmarked&&!actor) throw new HttpError(401,'저장한 글을 보려면 로그인해 주세요.');
-    if(subscribed&&!actor)throw new HttpError(401,'구독한 글을 보려면 로그인해 주세요.');
+    if (bookmarked&&!actor) throw new HttpError(401,'저장한 포스트를 보려면 로그인해 주세요.');
+    if(subscribed&&!actor)throw new HttpError(401,'구독한 포스트를 보려면 로그인해 주세요.');
     const clauses:string[]=[], values:(string|number)[]=[];
     if(mine){clauses.push('p.author_id=?');values.push(actorId);}else clauses.push("p.status='published'");
     if(bookmarked){clauses.push('EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?)');values.push(actorId);}
@@ -77,12 +77,12 @@ export async function handlePosts(request: Request, env: Env) {
     checkOrigin(request);
     const actor=await requireUser(request,env,['author','admin']);
     const body=await readBody(request);
-    if(typeof body.revision!=='number'||!Number.isSafeInteger(body.revision))throw new HttpError(400,'글 버전을 확인해 주세요.');
+    if(typeof body.revision!=='number'||!Number.isSafeInteger(body.revision))throw new HttpError(400,'포스트 버전을 확인해 주세요.');
     const existing=await env.DB.prepare('SELECT author_id,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;revision:number}>();
-    if(!existing)throw new HttpError(404,'글을 찾을 수 없습니다.');
-    if(existing.author_id!==actor.id&&actor.role!=='admin')throw new HttpError(403,'본인의 글만 삭제할 수 있습니다.');
+    if(!existing)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
+    if(existing.author_id!==actor.id&&actor.role!=='admin')throw new HttpError(403,'본인의 포스트만 삭제할 수 있습니다.');
     const removed=await env.DB.prepare('DELETE FROM posts WHERE id=? AND revision=? RETURNING id').bind(id,body.revision).first();
-    if(!removed)throw new HttpError(409,'다른 창에서 수정한 글입니다. 새로고침한 뒤 다시 삭제해 주세요.');
+    if(!removed)throw new HttpError(409,'다른 창에서 수정한 포스트입니다. 새로고침한 뒤 다시 삭제해 주세요.');
     return json({deleted:true,id});
   }
   if (!['POST', 'PUT'].includes(request.method) || (request.method === 'POST' && id) || (request.method === 'PUT' && !id)) return json({error:'지원하지 않는 요청입니다.'},405);
@@ -104,15 +104,15 @@ export async function handlePosts(request: Request, env: Env) {
     imageKey = b.image_key;
   }
   const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number}>():null;
-  if(id&&!existing)throw new HttpError(404,'글을 찾을 수 없습니다.');
-  if(existing&&existing.author_id!==user.id&&user.role!=='admin')throw new HttpError(403,'본인의 글만 수정할 수 있습니다.');
-  if(id&&(typeof b.revision!=='number'||!Number.isSafeInteger(b.revision)))throw new HttpError(400,'글 버전을 확인해 주세요.');
+  if(id&&!existing)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
+  if(existing&&existing.author_id!==user.id&&user.role!=='admin')throw new HttpError(403,'본인의 포스트만 수정할 수 있습니다.');
+  if(id&&(typeof b.revision!=='number'||!Number.isSafeInteger(b.revision)))throw new HttpError(400,'포스트 버전을 확인해 주세요.');
   const ownerId=existing?.author_id??user.id,labels=await postLabels(env.DB,ownerId,b,id),postId=id??randomUUID(),token=randomUUID();
   const write=!id?
     env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc,taxonomy_write_token) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(postId,user.id,b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,b.status==='published'?now():null,JSON.stringify(topicIds),document.format,document.document,token):
     env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,id,b.revision);
   const changes=await env.DB.batch([write,...labelWrites(env.DB,postId,token,labels)]);
-  if(!changes[0].results.length)throw new HttpError(409,'다른 창에서 수정한 글입니다. 내용을 복사해 둔 뒤 다시 열어 주세요.');
+  if(!changes[0].results.length)throw new HttpError(409,'다른 창에서 수정한 포스트입니다. 내용을 복사해 둔 뒤 다시 열어 주세요.');
   const p=await env.DB.prepare(select+' WHERE p.id=?').bind(user.id,user.id,postId).first<PostRow>();
   return json({post:p?publicPost(p,env,request):null},id?200:201);
 }
@@ -126,12 +126,12 @@ export async function handleReaction(request:Request,env:Env){
   if(typeof body.active!=='boolean')throw new HttpError(400,'좋아요 또는 저장 상태를 확인해 주세요.');
   if(await limited(env.DB,digest('reaction:'+actor.id),120))throw new HttpError(429,'요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   const visible=await env.DB.prepare("SELECT id FROM posts WHERE id=? AND status='published'").bind(match[1]).first();
-  if(!visible)throw new HttpError(404,'글을 찾을 수 없습니다.');
+  if(!visible)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   const table=match[2]==='like'?'post_likes':'post_bookmarks';
   if(body.active)await env.DB.prepare('INSERT INTO '+table+"(post_id,user_id) SELECT id,? FROM posts WHERE id=? AND status='published' ON CONFLICT(post_id,user_id) DO NOTHING").bind(actor.id,match[1]).run();
   else await env.DB.prepare('DELETE FROM '+table+' WHERE post_id=? AND user_id=?').bind(match[1],actor.id).run();
   const post=await env.DB.prepare(select+" WHERE p.id=? AND p.status='published'").bind(actor.id,actor.id,match[1]).first<PostRow>();
-  if(!post)throw new HttpError(404,'글을 찾을 수 없습니다.');
+  if(!post)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   return json({post:{id:post.id,like_count:post.like_count,liked:Boolean(post.liked),saved:Boolean(post.saved)}});
 }
 export async function handleMedia(request: Request, env: Env) {
@@ -166,5 +166,6 @@ export async function handleMedia(request: Request, env: Env) {
   if (!ext) throw new HttpError(415, 'JPG, PNG, WebP 이미지만 올릴 수 있습니다.');
   const key = (purpose==='post'?'posts/'+user.id+'/':'profiles/'+user.id+'/'+purpose+'-')+randomUUID()+'.'+ext;
   await env.MEDIA.put(key,data,{httpMetadata:{contentType:type!,cacheControl:'public, max-age=31536000, immutable'},customMetadata:{author:user.id}});
+  if(!await env.DB.prepare('SELECT 1 FROM auth_users WHERE id=? AND disabled=0').bind(user.id).first()){await env.MEDIA.delete(key);throw new HttpError(401,'계정 상태가 변경되어 업로드를 취소했습니다.');}
   return json({key,url:imageUrl(key,request,env),source:'/api/media/'+key},201);
 }

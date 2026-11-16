@@ -46,6 +46,9 @@ try {
   await migrate('0008_github_login.sql');
   await migrate('0009_writer_taxonomy.sql');
   await migrate('0010_post_comments.sql');
+  await migrate('0011_signup_consent.sql');
+  await migrate('0012_writer_applications.sql');
+  await migrate('0013_account_controls.sql');
   assert.deepEqual(JSON.parse((await db.prepare("SELECT topic_ids FROM posts WHERE id='pre-migration'").first()).topic_ids),['tech']);
   const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site, headers = {} } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
   const sessionCookie = r => { const match = r.headers.get('set-cookie')?.match(/__Host-ark_session=[a-f0-9]{64}/); assert.ok(match); return match[0]; };
@@ -59,7 +62,16 @@ try {
     const path='/api/auth/callback/google?'+new URLSearchParams({state:flow.url.searchParams.get('state'),code});
     return {response:await call(path,{cookie:flow.cookie,site:flow.site}),path};
   }
-  async function login(email, subject, site=origin) { const {response}=await finish(await begin(site),email,subject);assert.equal(new URL(response.headers.get('location')).searchParams.get('auth'),'success');return sessionCookie(response); }
+  async function login(email, subject, site=origin) {
+    const {response}=await finish(await begin(site),email,subject);
+    if(new URL(response.headers.get('location')).searchParams.get('auth')==='signup'){
+      const ticket=response.headers.get('set-cookie').match(/(?:__Host-ark_|ark_)signup=[a-f0-9]{64}/)[0];
+      const legal=await (await call('/api/auth/legal',{site})).json();
+      const completed=await call('/api/auth/signup',{site,cookie:ticket,method:'POST',body:{name:'Google 사용자',terms:true,privacy:true,version:legal.version}});
+      assert.equal(completed.status,201);return sessionCookie(completed);
+    }
+    assert.equal(new URL(response.headers.get('location')).searchParams.get('auth'),'success');return sessionCookie(response);
+  }
   const readerCookie=await login('reader@example.invalid','google-reader');
   const reader=(await (await call('/api/auth/me',{cookie:readerCookie})).json()).user;
   assert.equal(reader.role,'reader');
@@ -129,10 +141,7 @@ try {
   assert.equal((await subscribe('legacy',true)).status,200);
   const noPostFollow=await (await call('/api/subscriptions',{cookie:subscriberCookie})).json();assert.equal(noPostFollow.writers.find(w=>w.id==='legacy').latest_post,null);
   for(let i=0;i<2;i++)assert.equal((await subscribe('legacy',false)).status,200);
-  const trending=await (await call('/api/trending')).json();assert.equal(trending.period_days,7);assert.equal(trending.topics.find(t=>t.id==='frontend').post_count,1);
-  await db.prepare('UPDATE posts SET published_at=? WHERE id=?').bind(Math.floor(Date.now()/1000)-8*86400,post.id).run();
-  assert.equal((await (await call('/api/trending')).json()).topics.length,0,'Trending ignores older published posts and drafts');
-  await db.prepare('UPDATE posts SET published_at=? WHERE id=?').bind(Math.floor(Date.now()/1000),post.id).run();
+  const trending=await (await call('/api/trending')).json();assert.equal(trending.period_days,7);assert.deepEqual(trending.posts,[],'Posts without recent views are not trending');
   // Real reading events drive private author analytics, without counting the author.
   const viewPost=(id,cookie,headers={})=>call('/api/posts/'+id+'/view',{method:'POST',cookie,body:{},headers});
   assert.equal((await call('/api/author/dashboard')).status,401);
@@ -285,8 +294,9 @@ try {
   const linkedFlow={url:new URL(linkedStart.headers.get('location')),cookie:linkedStart.headers.get('set-cookie').split(';')[0]+'; __Host-ark_session='+oldToken,site:origin};
   const linked=await finish(linkedFlow,'legacy@example.invalid','google-legacy');assert.match(linked.response.headers.get('location'),/auth=success/);
   assert.equal((await db.prepare("SELECT role FROM auth_users WHERE id='legacy'").first()).role,'author');
+  const staleGoogleStart=await call('/api/auth/google',{cookie:sessionCookie(linked.response)});const staleGoogleFlow={url:new URL(staleGoogleStart.headers.get('location')),cookie:staleGoogleStart.headers.get('set-cookie').split(';')[0]+'; '+sessionCookie(linked.response),site:origin};await db.prepare("UPDATE auth_users SET login_version=login_version+1 WHERE id='legacy'").run();assert.match((await finish(staleGoogleFlow,'legacy@example.invalid','google-legacy')).response.headers.get('location'),/auth_error=link/);
   // Callback must match browser state, cannot be replayed, and validates signed claims.
-  const flow=await begin();const valid=await finish(flow,'fresh@example.invalid','google-fresh');assert.match(valid.response.headers.get('location'),/auth=success/);
+  const flow=await begin();const valid=await finish(flow,'fresh@example.invalid','google-fresh');assert.match(valid.response.headers.get('location'),/auth=signup/);
   const before=exchangesCount;assert.match((await call(valid.path,{cookie:flow.cookie})).headers.get('location'),/auth_error=state/);assert.equal(exchangesCount,before);
   const noCookie=await begin();assert.match((await call('/api/auth/callback/google?state='+noCookie.url.searchParams.get('state')+'&code=x')).headers.get('location'),/auth_error=state/);
   for(const claims of [{nonce:'wrong'},{email_verified:false},{iss:'https://attacker.invalid'},{aud:'another-client'},{exp:Math.floor(Date.now()/1000)-60},{iat:Math.floor(Date.now()/1000)-1200}]) { const invalid=await finish(await begin(),'invalid@example.invalid','google-invalid',claims);assert.match(invalid.response.headers.get('location'),/auth_error=google/); }

@@ -10,7 +10,7 @@ try {
   const { default: App } = await vite.ssrLoadModule('/src/App.jsx');
   const html = renderToString(createElement(App));
   assert.equal((html.match(/class="post"/g) || []).length, 0);
-  assert.ok(html.includes('글을 불러오고 있어요.'));
+  assert.ok(html.includes('포스트를 불러오고 있어요.'));
   assert.ok(!html.includes('좋은 코드는 읽는 사람을 생각한다'));
   assert.ok(!html.includes('프론트엔드 · 취향 수집가'));
   assert.ok(html.includes('21st ARK'));assert.ok(!html.includes('article-dialog'),'Articles no longer render in a modal');
@@ -20,7 +20,7 @@ try {
   const card=renderToString(createElement(PostCard,{post:fixture,topics:[{id:'tech',name:'개발 · 기술'}],pending:new Set()}));
   assert.ok(card.includes('DB 작성자'));assert.ok(card.includes('D1에서 가져온 글'));assert.ok(card.includes('>42<'));assert.ok(card.includes('aria-pressed="true"'));assert.ok(!card.includes('code-art'));
   const people=renderToString(createElement(WriterList,{writers:[{id:'writer-id',name:'DB 작성자',bio:'저장된 소개',post_count:3}]}));
-  assert.ok(people.includes('저장된 소개'));assert.ok(people.replace(/<!--.*?-->/g,'').includes('업로드한 글 3개'));
+  assert.ok(people.includes('저장된 소개'));assert.ok(people.replace(/<!--.*?-->/g,'').includes('업로드한 포스트 3개'));
   const {default:AppShell}=await vite.ssrLoadModule('/src/AppShell.jsx');
   for(const role of [null,'reader','author','admin']){
     const shell=renderToString(createElement(AppShell,{view:'home',title:'홈',query:'',onSearch:()=>{},category:'all',people:[],popularTopics:[],user:role?{name:'메뉴 확인',role}:null}));
@@ -34,7 +34,7 @@ try {
   }
   const {default:ArticlePage}=await vite.ssrLoadModule('/src/ArticlePage.jsx');
   const reading=createElement(ArticlePage,{post:{...fixture,status:'published',body_format:'plain'},topics:[{id:'tech',name:'개발 · 기술'}],user:{id:'viewer',name:'열람자',role:'reader'},pending:new Set()});
-  const readingHtml=renderToString(reading);assert.ok(readingHtml.includes('D1에서 가져온 글'));assert.ok(readingHtml.includes('실제 본문'));assert.ok(readingHtml.includes('aria-label="글 저장"'));assert.ok(!readingHtml.includes('글 수정'),'Readers cannot edit an article');assert.ok(readingHtml.includes('댓글 등록'));assert.ok(readingHtml.includes('댓글 내용'));
+  const readingHtml=renderToString(reading);assert.ok(readingHtml.includes('D1에서 가져온 글'));assert.ok(readingHtml.includes('실제 본문'));assert.ok(readingHtml.includes('aria-label="포스트 저장"'));assert.ok(!readingHtml.includes('포스트 수정'),'Readers cannot edit an article');assert.ok(readingHtml.includes('댓글 등록'));assert.ok(readingHtml.includes('댓글 내용'));
   const guestReading=renderToString(createElement(ArticlePage,{post:{...fixture,status:'published',body_format:'plain'},topics:[],user:null,pending:new Set()}));assert.ok(guestReading.includes('로그인하고 댓글 남기기'));assert.ok(!guestReading.includes('댓글 등록'));
   const draftReading=renderToString(createElement(ArticlePage,{post:{...fixture,status:'draft',body_format:'plain'},topics:[],user:null,pending:new Set()}));assert.ok(!draftReading.includes('id="post-comments"'));
   const readingShell=renderToString(createElement(AppShell,{view:'search',title:'검색',query:'existing query',onSearch:()=>{},reading:true,reader:reading,user:null,children:'preserved list'}));
@@ -42,5 +42,11 @@ try {
   const {default:AuthDialog}=await vite.ssrLoadModule('/src/AuthDialog.jsx');
   const loginDialog=renderToString(createElement(AuthDialog,{open:false,checking:false,user:null})).replace(/<!--.*?-->/g,'');
   assert.ok(loginDialog.includes('Google 계정으로 계속하기'));assert.ok(loginDialog.includes('GitHub 계정으로 계속하기'));assert.ok(!loginDialog.includes('기존 이메일 계정으로 로그인'));assert.ok(!loginDialog.includes('처음 로그인하면'));assert.ok(!loginDialog.includes('type="password"'));
+  const {default:SignupDialog}=await vite.ssrLoadModule('/src/SignupDialog.jsx');
+  const signupHtml=renderToString(createElement(SignupDialog,{signup:{provider:'google',name:'새 필자'}}));assert.ok(signupHtml.includes('표시 이름'));assert.ok(signupHtml.includes('가입 완료'));assert.ok(!signupHtml.includes('type="password"'));
+  const {WriterApplicationForm}=await vite.ssrLoadModule('/src/WriterApplications.jsx');const apply=renderToString(createElement(WriterApplicationForm,{user:{id:'reader',name:'열람자',role:'reader'}}));assert.ok(apply.includes('신청 정보를 불러오고 있어요.'));
+  const {default:AccountControls}=await vite.ssrLoadModule('/src/AccountControls.jsx');
+  const controls=renderToString(createElement(AccountControls,{account:{user:{id:'viewer',email:'viewer@example.invalid'},connections:{google:true,github:false}}}));assert.ok(controls.includes('계정 삭제하기'));assert.ok(controls.includes('aria-label="Google 연결 해제"'));assert.ok(controls.includes('disabled=""'));assert.ok(!controls.includes('계정 영구 삭제'),'Deletion requires an explicit first step');
+  const {TrendingPostCards}=await vite.ssrLoadModule('/src/CommunitySidebar.jsx');const trendCards=renderToString(createElement(TrendingPostCards,{posts:[{id:'trending',title:'많이 읽은 포스트',summary:'간단한 설명',writer:{name:'필자'}}]}));assert.ok(trendCards.includes('data-post="trending"'));assert.ok(trendCards.includes('간단한 설명'));assert.ok(trendCards.includes('필자'));assert.ok(!trendCards.includes('data-explore-topic'));
   console.log('React render passed: no sample fallback, loading state, database article/author fields, real like counts and saved state.');
 } finally { await vite.close(); }

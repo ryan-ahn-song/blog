@@ -1,8 +1,9 @@
-import { randomBytes,randomUUID,createHash } from 'node:crypto';
+import { beginSignup } from './signup';
+import { randomBytes,createHash } from 'node:crypto';
 import { HttpError,json } from './http';
 import { type AuthEnv,type UserRow,now,digest,cookie,readCookie,createSession,currentUser,local,limited } from './session';
 
-type Flow={verifier:string;origin:string;link_user_id:string|null;expires_at:number};
+type Flow={verifier:string;origin:string;link_user_id:string|null;link_version:number;expires_at:number};
 function originFor(request:Request,env:AuthEnv){
   const url=new URL(request.url);
   if(local(request)){const origin=url.searchParams.get('origin')??'http://127.0.0.1:3000';if(origin==='http://127.0.0.1:3000')return origin;}
@@ -24,7 +25,7 @@ export async function handleGitHub(request:Request,env:AuthEnv):Promise<Response
     const state=randomBytes(32).toString('hex'),verifier=randomBytes(48).toString('base64url'),actor=await currentUser(request,env);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM auth_github_states WHERE expires_at<=?').bind(now()),
-      env.DB.prepare('INSERT INTO auth_github_states(state_hash,verifier,origin,link_user_id,expires_at) VALUES(?,?,?,?,?)').bind(digest(state),verifier,origin,actor?.id??null,now()+600),
+      env.DB.prepare('INSERT INTO auth_github_states(state_hash,verifier,origin,link_user_id,expires_at,link_version) VALUES(?,?,?,?,?,?)').bind(digest(state),verifier,origin,actor?.id??null,now()+600,actor?.login_version??0),
     ]);
     const authorize=new URL('https://github.com/login/oauth/authorize');
     authorize.search=new URLSearchParams({client_id:env.GITHUB_CLIENT_ID,redirect_uri:origin+'/api/auth/callback/github',scope:'read:user user:email',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',prompt:'select_account'}).toString();
@@ -59,22 +60,17 @@ export async function handleGitHub(request:Request,env:AuthEnv):Promise<Response
     let user=await env.DB.prepare('SELECT u.* FROM auth_github_accounts g JOIN auth_users u ON u.id=g.user_id WHERE g.subject=?').bind(subject).first<UserRow>();
     if(flow.link_user_id){
       const actor=await currentUser(request,env);
-      if(!actor||actor.id!==flow.link_user_id||actor.email.toLowerCase()!==email||(user&&user.id!==actor.id))return redirect(request,origin,'auth_error=link');
-      if(!user)await env.DB.prepare('INSERT INTO auth_github_accounts(subject,user_id) VALUES(?,?)').bind(subject,actor.id).run();
+      if(!actor||actor.id!==flow.link_user_id||actor.login_version!==flow.link_version||actor.email.toLowerCase()!==email||(user&&user.id!==actor.id))return redirect(request,origin,'auth_error=link');
+      if(!user){const linked=await env.DB.prepare('INSERT INTO auth_github_accounts(subject,user_id) SELECT ?,id FROM auth_users WHERE id=? AND login_version=? AND disabled=0 RETURNING user_id').bind(subject,actor.id,flow.link_version).first();if(!linked)return redirect(request,origin,'auth_error=link');}
       user=actor;
     }else if(!user){
       // Linking an existing identity requires its authenticated session, even with a verified matching email.
       if(await env.DB.prepare('SELECT id FROM auth_users WHERE email=?').bind(email).first())return redirect(request,origin,'auth_error=existing');
-      const id=randomUUID(),name=(typeof profile.name==='string'?profile.name.trim():'')||(typeof profile.login==='string'?profile.login:email.split('@')[0]);
-      const role=email===env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()?'admin':'reader';
-      await env.DB.batch([
-        env.DB.prepare('INSERT INTO auth_users(id,email,name,role) VALUES(?,?,?,?)').bind(id,email,name.slice(0,80),role),
-        env.DB.prepare('INSERT INTO auth_github_accounts(subject,user_id) VALUES(?,?)').bind(subject,id),
-      ]);
-      user=await env.DB.prepare('SELECT * FROM auth_users WHERE id=?').bind(id).first<UserRow>();
+      const name=(typeof profile.name==='string'?profile.name.trim():'')||(typeof profile.login==='string'?profile.login:email.split('@')[0]);
+      return beginSignup(request,env,origin,'github',subject,email,name);
     }
     if(!user||user.disabled)return redirect(request,origin,'auth_error=disabled');
     stage='session';
-    return redirect(request,origin,'auth=success',await createSession(request,env,user.id));
+    return redirect(request,origin,'auth=success',await createSession(request,env,user.id,user.login_version));
   }catch{console.error('GitHub authentication failed',stage);return redirect(request,origin,'auth_error=github');}
 }

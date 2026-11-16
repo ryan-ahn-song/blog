@@ -1,3 +1,6 @@
+import { handleAccount } from './account';
+import { legal } from './legal';
+import { pendingSignup, handleSignup } from './signup';
 import { json, readBody, HttpError } from './http';
 import { handleGoogle } from './google';
 import { handleGitHub } from './github';
@@ -7,18 +10,15 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
   const path = new URL(request.url).pathname;
   if (path === '/api/auth/google' || path === '/api/auth/callback/google') return handleGoogle(request, env);
   if(path==='/api/auth/github'||path==='/api/auth/callback/github')return handleGitHub(request,env);
+  if(path==='/api/auth/signup')return handleSignup(request,env);
+  if(path==='/api/auth/legal'&&request.method==='GET')return json(legal);
   if (request.method === 'GET' && path === '/api/auth/providers') return json({ google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),github:Boolean(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET) });
   if (request.method === 'GET' && path === '/api/auth/me') {
     const user = await currentUser(request, env);
-    return json({ user: user ? publicUser(user,request,env) : null }, 200, user ? {} : { 'Set-Cookie': cookie(request, 'session', '', 0) });
+    const pending=user?null:await pendingSignup(request,env);
+    return json({ user: user ? publicUser(user,request,env) : null, ...(pending?{signup:{name:pending.suggested_name,provider:pending.provider}}:{}) }, 200, user ? {} : { 'Set-Cookie': cookie(request, 'session', '', 0) });
   }
-  if (path === '/api/auth/account') {
-    if (request.method !== 'GET') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'GET'});
-    const actor=await requireUser(request,env);
-    const google=Boolean(await env.DB.prepare('SELECT 1 FROM auth_google_accounts WHERE user_id=?').bind(actor.id).first());
-    const github=Boolean(await env.DB.prepare('SELECT 1 FROM auth_github_accounts WHERE user_id=?').bind(actor.id).first());
-    return json({user:publicUser(actor,request,env),connections:{google,github},google_available:Boolean(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github_available:Boolean(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)});
-  }
+  if(path==='/api/auth/account'||/^\/api\/auth\/connections\/(google|github)$/.test(path))return handleAccount(request,env);
   if (path === '/api/auth/profile') {
     if (request.method !== 'PATCH') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'PATCH'});
     checkOrigin(request);
