@@ -3,10 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest } from './api';
 import BlockCanvas from './BlockCanvas';
 import {WriterTaxonomyFields} from './WriterTaxonomy';
+import useImageCrop from './useImageCrop';
 const blank = { title: '', summary: '', body: '', body_doc: null, body_format: 'markdown', category: 'tech', kind:'post', image_key: null, image: null, status: 'draft' };
 const withLabels=value=>({...blank,...value,writer_category_id:value?.writer_category_id??value?.writer_category?.id??null,writer_tag_ids:value?.writer_tag_ids??value?.writer_tags?.map(tag=>tag.id)??[]});
 export default function Editor({ user, post, topics, onSaved, onDirty }) {
   const [intent,setIntent]=useState(null),saving=useRef(false);
+  const {cropImage,cropDialog}=useImageCrop();
+  const [coverBusy,setCoverBusy]=useState(false),coverSource=useRef(null);
   const [record, setRecord] = useState(post);
   const storageKey = 'ark-draft:' + user.id + ':' + (post?.id || 'new');
   const [restored]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));if(!saved||(post&&saved.revision!==post.revision))return null;if(!post&&!saved.title?.trim()&&!saved.summary?.trim()&&!saved.body?.trim()&&!saved.image_key&&!saved.writer_category_id&&!saved.writer_tag_ids?.length&&(!saved.kind||saved.kind==='post')&&(!saved.category||saved.category==='tech')&&(!saved.topic_ids||saved.topic_ids.every(id=>id==='tech'))){localStorage.removeItem(storageKey);return null;}return saved;}catch{return null;}});
@@ -33,10 +36,14 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
     try{return await request;}
     finally{setUploads(n=>n-1);}
   }
-  async function uploadCover(event){
-    const file=event.target.files?.[0];event.target.value='';if(!file)return;
-    try{const result=await uploadFile(file);setForm(f=>({...f,image_key:result.key,image:result.url}));setDirty(true);setNotice('');}catch(e){setError(e.message);}
+  async function adjustCover(input){
+    if(coverBusy)return;setCoverBusy(true);setError('');
+    try{
+      const file=await cropImage(input,'post');if(!file)return;
+      const result=await uploadFile(file);coverSource.current=input;setForm(f=>({...f,image_key:result.key,image:result.url}));setDirty(true);setNotice('');
+    }catch(e){setError(e.message);}finally{setCoverBusy(false);}
   }
+  function uploadCover(event){const file=event.target.files?.[0];event.target.value='';if(file)adjustCover(file);}
   async function uploadInline(file){try{const result=await uploadFile(file);return result.source??('/api/media/'+result.key);}catch(e){setError(e.message);throw e;}}
   function requestSave(status) {
     if(disabled||saving.current)return;
@@ -59,7 +66,7 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
       setIntent(null);onSaved(result.post);
     } catch (e) { setError(e.message); } finally { saving.current=false;setPending(false); }
   }
-  const disabled=pending||uploads>0||taxonomyBusy||Boolean(intent),categories=topics,selectedTopic=(form.topic_ids??[]).find(id=>id!==form.category&&topics.some(t=>t.id===id))??form.category,writerId=record?.writer?.id??record?.author_id??user.id;
+  const disabled=pending||uploads>0||taxonomyBusy||coverBusy||Boolean(intent),categories=topics,selectedTopic=(form.topic_ids??[]).find(id=>id!==form.category&&topics.some(t=>t.id===id))??form.category,writerId=record?.writer?.id??record?.author_id??user.id;
   function changeCategory(id){const topic=topics.find(t=>t.id===id);if(!topic)return;setForm(f=>({...f,category:topic.category,topic_ids:[...new Set([topic.category,topic.id])]}));setDirty(true);setNotice('');}
   return <section className="editor split-editor" aria-label="포스트 작성">
     <aside className="editor-details" aria-label="포스트 설정">
@@ -70,7 +77,7 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
         <div className="editor-field-heading"><label htmlFor="post-title">제목</label><span>{form.title.length}/160</span></div><textarea className="editor-title" id="post-title" rows={2} placeholder="포스트의 제목" required maxLength={160} value={form.title} onChange={event=>change('title',event.target.value)}/>
         <div className="editor-field-heading"><label htmlFor="post-summary">짧은 소개</label><span>선택 · {form.summary.length}/280</span></div><textarea id="post-summary" rows={3} maxLength={280} placeholder="어떤 내용의 포스트인가요?" value={form.summary} onChange={event=>change('summary',event.target.value)}/>
         <WriterTaxonomyFields writerId={writerId} canManage={writerId===user.id} value={form} disabled={disabled} onBusy={setTaxonomyBusy} onChange={value=>{setForm(previous=>({...previous,...value}));setDirty(true);setNotice('');}}/>
-        <div className="cover-label"><label htmlFor="post-cover">대표 이미지 <span>선택</span></label>{form.image&&<button type="button" className="text-button" onClick={()=>{change('image_key',null);change('image',null);}}>제거</button>}</div>
+        <div className="cover-label"><label htmlFor="post-cover">대표 이미지 <span>선택</span></label>{form.image&&<><button type="button" className="text-button" onClick={()=>adjustCover(coverSource.current??form.image)}>이미지 조정</button><button type="button" className="text-button" onClick={()=>{coverSource.current=null;change('image_key',null);change('image',null);}}>제거</button></>}</div>
         {form.image&&<img className="editor-cover" src={form.image} alt="업로드한 대표 이미지"/>}<label className="cover-upload-button" htmlFor="post-cover"><span>＋ {form.image?'이미지 변경':'이미지 추가'}</span><small>권장 1600 × 900px · 16:9<br/>JPG, PNG, WebP · 최대 8MB</small><input className="sr-only" id="post-cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover}/></label>
       </fieldset></form>
       <div className="editor-save-area">
@@ -79,6 +86,7 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
       </div>
     </aside>
     <BlockCanvas ref={canvas} initialValue={initialValue.current} title={form.title} bodyLength={form.body.length} onChange={changeDocument} uploadFile={uploadInline} disabled={pending||Boolean(intent)}/>
+    {cropDialog}
     <PostSaveConfirmation intent={intent} pending={pending} error={error} onCancel={()=>{if(!saving.current)setIntent(null);}} onConfirm={saveConfirmed}/>
   </section>;
 }
