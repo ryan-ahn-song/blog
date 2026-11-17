@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest } from './api';
 import BlockCanvas from './BlockCanvas';
 import {WriterTaxonomyFields} from './WriterTaxonomy';
-const blank = { title: '', summary: '', body: '', body_doc: null, body_format: 'markdown', category: 'tech', image_key: null, image: null, status: 'draft' };
+const blank = { title: '', summary: '', body: '', body_doc: null, body_format: 'markdown', category: 'tech', kind:'post', image_key: null, image: null, status: 'draft' };
 const withLabels=value=>({...blank,...value,writer_category_id:value?.writer_category_id??value?.writer_category?.id??null,writer_tag_ids:value?.writer_tag_ids??value?.writer_tags?.map(tag=>tag.id)??[]});
 export default function Editor({ user, post, topics, onSaved, onDirty }) {
   const [intent,setIntent]=useState(null),saving=useRef(false);
   const [record, setRecord] = useState(post);
   const storageKey = 'ark-draft:' + user.id + ':' + (post?.id || 'new');
-  const [restored]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));if(!saved||(post&&saved.revision!==post.revision))return null;if(!post&&!saved.title?.trim()&&!saved.summary?.trim()&&!saved.body?.trim()&&!saved.image_key&&!saved.writer_category_id&&!saved.writer_tag_ids?.length&&(!saved.category||saved.category==='tech')&&(!saved.topic_ids||saved.topic_ids.every(id=>id==='tech'))){localStorage.removeItem(storageKey);return null;}return saved;}catch{return null;}});
+  const [restored]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(storageKey));if(!saved||(post&&saved.revision!==post.revision))return null;if(!post&&!saved.title?.trim()&&!saved.summary?.trim()&&!saved.body?.trim()&&!saved.image_key&&!saved.writer_category_id&&!saved.writer_tag_ids?.length&&(!saved.kind||saved.kind==='post')&&(!saved.category||saved.category==='tech')&&(!saved.topic_ids||saved.topic_ids.every(id=>id==='tech'))){localStorage.removeItem(storageKey);return null;}return saved;}catch{return null;}});
   const [form, setForm] = useState(() => restored?{...withLabels(restored),body_format:restored.body_format??'plain'}:withLabels(post));
   const initialValue=useRef(form),canvas=useRef(null),uploadQueue=useRef(Promise.resolve());
   const [dirty, setDirty] = useState(Boolean(restored)), [pending, setPending] = useState(false), [uploads, setUploads] = useState(0);
@@ -45,14 +45,14 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
     try{value={...form,...canvas.current.snapshot()};}catch{setError('본문을 변환하지 못했습니다. 마크다운 내용을 확인해 주세요.');return;}
     if(!value.title.trim()||value.title.trim().length>160){setError('제목을 160자 이내로 입력해 주세요.');document.getElementById('post-title')?.focus();return;}
     if(!value.body.trim()||value.body.length>80000){setError('본문을 80,000자 이내로 입력해 주세요.');return;}
-    setIntent({status,value,recordId:record?.id,revision:record?.revision,confirmation:saveConfirmation(status,record)});
+    setIntent({status,value,recordId:record?.id,revision:record?.revision,confirmation:saveConfirmation(status,record,value.kind)});
   }
   async function saveConfirmed(){
     if(!intent||saving.current)return;
     const {status,value,recordId,revision}=intent;
     saving.current=true;setPending(true);setError('');
     try {
-      const result = await api('/api/posts' + (recordId ? '/' + recordId : ''), jsonRequest(recordId ? 'PUT' : 'POST', { title:value.title,summary:value.summary,body:value.body,body_doc:value.body_doc,body_format:value.body_format,category:value.category,topic_ids:value.topic_ids??[value.category],image_key:value.image_key,writer_category_id:value.writer_category_id,writer_tag_ids:value.writer_tag_ids,revision,status }));
+      const result = await api('/api/posts' + (recordId ? '/' + recordId : ''), jsonRequest(recordId ? 'PUT' : 'POST', { title:value.title,summary:value.summary,body:value.body,body_doc:value.body_doc,body_format:value.body_format,category:value.category,kind:value.kind,topic_ids:value.topic_ids??[value.category],image_key:value.image_key,writer_category_id:value.writer_category_id,writer_tag_ids:value.writer_tag_ids,revision,status }));
       setRecord(result.post); setForm(withLabels(result.post)); setDirty(false);
       try { localStorage.removeItem(storageKey); } catch {}
       setNotice(status === 'published' ? '업로드했습니다. 홈에서 포스트를 읽을 수 있어요.' : '임시저장했습니다. 내 포스트 관리에서 이어 쓸 수 있어요.');
@@ -63,8 +63,9 @@ export default function Editor({ user, post, topics, onSaved, onDirty }) {
   function changeCategory(id){const topic=topics.find(t=>t.id===id);if(!topic)return;setForm(f=>({...f,category:topic.category,topic_ids:[...new Set([topic.category,topic.id])]}));setDirty(true);setNotice('');}
   return <section className="editor split-editor" aria-label="포스트 작성">
     <aside className="editor-details" aria-label="포스트 설정">
-      <div className="editor-details-heading"><h2>{record?'포스트 편집':'새로운 포스트'}</h2></div>
+      <div className="editor-details-heading"><h2>{record?(form.kind==='notice'?'공지 편집':'포스트 편집'):(form.kind==='notice'?'새로운 공지':'새로운 포스트')}</h2></div>
       <form id="post-editor" onSubmit={event=>{event.preventDefault();requestSave('published');}}><fieldset disabled={disabled}>
+        <label htmlFor="post-kind">게시 종류</label><select id="post-kind" value={form.kind} onChange={event=>change('kind',event.target.value)}><option value="post">포스트</option><option value="notice">공지</option></select>
         <label htmlFor="post-category">전체 분류</label><select id="post-category" value={selectedTopic} disabled={!categories.length} onChange={event=>changeCategory(event.target.value)}>{categories.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
         <div className="editor-field-heading"><label htmlFor="post-title">제목</label><span>{form.title.length}/160</span></div><textarea className="editor-title" id="post-title" rows={2} placeholder="포스트의 제목" required maxLength={160} value={form.title} onChange={event=>change('title',event.target.value)}/>
         <div className="editor-field-heading"><label htmlFor="post-summary">짧은 소개</label><span>선택 · {form.summary.length}/280</span></div><textarea id="post-summary" rows={3} maxLength={280} placeholder="어떤 내용의 포스트인가요?" value={form.summary} onChange={event=>change('summary',event.target.value)}/>

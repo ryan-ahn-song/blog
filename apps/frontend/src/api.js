@@ -4,8 +4,9 @@ export function clearApiCache(){entries.clear();inflight.clear();epoch++;}
 export function setApiScope(next){if(scope!==next){scope=next;clearApiCache();}}
 const cacheable=path=>/^\/api\/(posts(?:\?|\/[^/?]+$)|writers(?:\?|\/[^/?]+$|$)|topics$|trending$|subscriptions$|author\/dashboard\?)/.test(path);
 export async function api(path,options={}){
-  const requestedScope=scope;
-  const method=(options.method??'GET').toUpperCase(),cached=method==='GET'&&cacheable(path),key=scope+':'+epoch+':'+path;
+  // Public catalog data remains valid while the first auth request establishes scope.
+  const publicData=path==='/api/topics'||path==='/api/trending',requestedScope=scope;
+  const method=(options.method??'GET').toUpperCase(),cached=method==='GET'&&cacheable(path),key=(publicData?'public':scope)+':'+epoch+':'+path;
   if(options.signal?.aborted)throw new DOMException('Aborted','AbortError');
   async function request(){
     const {signal,...rest}=options;
@@ -18,7 +19,7 @@ export async function api(path,options={}){
   const previous=entries.get(key);if(previous&&Date.now()-previous.at<30000)return previous.value;
   let promise=inflight.get(key);
   if(!promise){const generation=epoch;promise=request().then(value=>{if(generation===epoch){entries.delete(key);entries.set(key,{value,at:Date.now()});while(entries.size>60)entries.delete(entries.keys().next().value);}return value;}).finally(()=>inflight.delete(key));inflight.set(key,promise);}
-  const value=await promise;if(scope!==requestedScope||options.signal?.aborted)throw new DOMException('Aborted','AbortError');return value;
+  const value=await promise;if((!publicData&&scope!==requestedScope)||options.signal?.aborted)throw new DOMException('Aborted','AbortError');return value;
 }
 export const jsonRequest=(method,body)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 export const roleName=role=>({reader:'열람자',author:'작성자',admin:'관리자'}[role]||role);

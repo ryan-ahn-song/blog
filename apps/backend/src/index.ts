@@ -10,6 +10,7 @@ import { handleComments } from './comments';
 import { handleApplications } from './applications';
 import { HttpError, json } from './http';
 import type { AuthEnv } from './session';
+import {handleReadingHistory} from './reading-history';
 export interface Env extends AuthEnv { MEDIA: R2Bucket; MEDIA_BASE_URL?: string }
 export default {
   async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){
@@ -17,6 +18,7 @@ export default {
       cleanupAccountMedia(env),
       env.DB.batch(['auth_pending_signups','auth_login_limits','auth_sessions','auth_oauth_states','auth_github_states'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE expires_at<=unixepoch()'))),
       env.DB.prepare('DELETE FROM account_security_events WHERE created_at<unixepoch()-7776000').run(),
+      env.DB.prepare('DELETE FROM reading_history WHERE read_at<unixepoch()-7776000').run(),
     ]));
   },
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -31,6 +33,7 @@ export default {
       if (/^\/api\/posts\/[\w-]+\/(like|bookmark)$/.test(path)) return await handleReaction(request,env);
       if(/^\/api\/posts\/[\w-]+\/view$/.test(path))return await recordRead(request,env);
       if(path==='/api/author/dashboard')return await authorDashboard(request,env);
+      if(path==='/api/reading-history')return await handleReadingHistory(request,env);
       if (path === '/api/media' || path.startsWith('/api/media/')) return await handleMedia(request, env);
       if (path === '/api/writers'||/^\/api\/writers\/[\w-]+$/.test(path)) return await handleWriters(request,env);
       if (path === '/api/topics') return await handleTopics(request,env);

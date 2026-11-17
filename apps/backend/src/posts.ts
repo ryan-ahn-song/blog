@@ -8,9 +8,9 @@ import { mediaUrl,postImageKey,profileImageKey,inlineImageKey } from './media';
 import { documentFields } from './document';
 import {postLabels,labelWrites} from './taxonomy';
 type Env = AuthEnv & { MEDIA: R2Bucket; MEDIA_BASE_URL?: string };
-type PostRow = { author_disabled:number;taxonomy_write_token:string|null;writer_category_json:string|null;writer_tags_json:string; id: string; author_id: string; author_name: string; author_bio: string; author_avatar_key:string|null; title: string; summary: string; body: string; body_format:'plain'|'markdown';body_doc:string|null; category: string; topic_ids: string; image_key: string | null; status: string; revision: number; created_at: number; updated_at: number; published_at: number | null; like_count:number; liked:number; saved:number };
+type PostRow = { kind:'post'|'notice'; author_disabled:number;taxonomy_write_token:string|null;writer_category_json:string|null;writer_tags_json:string; id: string; author_id: string; author_name: string; author_bio: string; author_avatar_key:string|null; title: string; summary: string; body: string; body_format:'plain'|'markdown';body_doc:string|null; category: string; topic_ids: string; image_key: string | null; status: string; revision: number; created_at: number; updated_at: number; published_at: number | null; like_count:number; liked:number; saved:number };
 const select = "SELECT p.*,u.disabled AS author_disabled,u.name AS author_name,u.bio AS author_bio,u.avatar_key AS author_avatar_key,(SELECT count(*) FROM post_likes l JOIN auth_users a ON a.id=l.user_id WHERE l.post_id=p.id AND a.disabled=0) AS like_count,EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked,EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?) AS saved,(SELECT json_object('id',l.id,'name',l.name) FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='category') AS writer_category_json,(SELECT json_group_array(json_object('id',t.id,'name',t.name)) FROM (SELECT l.id,l.name FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='tag' ORDER BY l.name,l.id) t) AS writer_tags_json FROM posts p JOIN auth_users u ON u.id=p.author_id";
-const listSelect=select.replace('p.*',"p.id,p.author_id,p.title,p.summary,p.category,p.topic_ids,p.image_key,p.status,p.revision,p.created_at,p.updated_at,p.published_at,substr(p.body,1,240) AS excerpt,max(1,(length(p.body)+499)/500) AS reading_minutes");
+const listSelect=select.replace('p.*',"p.id,p.author_id,p.title,p.summary,p.kind,p.category,p.topic_ids,p.image_key,p.status,p.revision,p.created_at,p.updated_at,p.published_at,substr(p.body,1,240) AS excerpt,max(1,(length(p.body)+499)/500) AS reading_minutes");
 function imageUrl(key:string,_request:Request,_env:Env){return '/api/media/'+key;}
 function publicPost(p: PostRow, env: Env, request: Request) { const {taxonomy_write_token,writer_category_json,writer_tags_json,author_disabled,...post}=p;return { ...post,writer_category:writer_category_json?JSON.parse(writer_category_json):null,writer_tags:JSON.parse(writer_tags_json||'[]'), ...(p.body_doc!==undefined?{body_doc:p.body_doc?JSON.parse(p.body_doc):null}:{}), topic_ids:JSON.parse(p.topic_ids),liked:Boolean(p.liked),saved:Boolean(p.saved),writer: { id: p.author_id, name: p.author_name, bio:p.author_bio,avatar_url:mediaUrl(p.author_avatar_key,request,env) }, image: p.image_key ? imageUrl(p.image_key, request, env) : null }; }
 async function validateBodyImages(body:Record<string,unknown>,request:Request,env:Env,user:{id:string;role:string}){
@@ -65,6 +65,9 @@ export async function handlePosts(request: Request, env: Env) {
     if (bookmarked&&!actor) throw new HttpError(401,'저장한 포스트를 보려면 로그인해 주세요.');
     if(subscribed&&!actor)throw new HttpError(401,'구독한 포스트를 보려면 로그인해 주세요.');
     const clauses:string[]=[], values:(string|number)[]=[];
+    const kind=url.searchParams.get('kind')??(mine||bookmarked||subscribed?'all':'post');
+    if(!['post','notice','all'].includes(kind))throw new HttpError(400,'포스트 종류를 확인해 주세요.');
+    if(kind!=='all'){clauses.push('p.kind=?');values.push(kind);}
     if(mine){clauses.push('p.author_id=?');values.push(actorId);}else clauses.push("p.status='published' AND u.disabled=0");
     if(bookmarked){clauses.push('EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?)');values.push(actorId);}
     if(subscribed){clauses.push("u.disabled=0 AND EXISTS(SELECT 1 FROM writer_subscriptions s WHERE s.writer_id=p.author_id AND s.subscriber_id=?)");values.push(actorId);}
@@ -100,6 +103,7 @@ export async function handlePosts(request: Request, env: Env) {
   if (await limited(env.DB, digest('write:' + user.id), 100)) throw new HttpError(429, '저장 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   const b = await readBody(request, 1500000);
   if (typeof b.title !== 'string' || !b.title.trim() || b.title.trim().length > 160 || typeof b.body !== 'string' || !b.body.trim() || b.body.length > 80000 || typeof b.summary !== 'string' || b.summary.length > 280 || typeof b.category!=='string' || !['tech','life'].includes(b.category) || typeof b.status!=='string' || !['draft','published'].includes(b.status)) throw new HttpError(400, '제목(160자), 소개(280자), 본문(80,000자)을 확인해 주세요.');
+  if(b.kind!==undefined&&(typeof b.kind!=='string'||!['post','notice'].includes(b.kind)))throw new HttpError(400,'포스트 또는 공지를 선택해 주세요.');
   const document=documentFields(b);
   const mediaKeys=await validateBodyImages(b,request,env,user);
   if(document.document)document.document=JSON.stringify(b.body_doc);
@@ -112,14 +116,15 @@ export async function handlePosts(request: Request, env: Env) {
     if (!await env.MEDIA.head(b.image_key)) throw new HttpError(400, '대표 이미지가 존재하지 않습니다.');
     imageKey = b.image_key;
   }
-  const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number}>():null;
+  const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision,kind FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number;kind:'post'|'notice'}>():null;
   if(id&&!existing)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   if(existing&&existing.author_id!==user.id&&user.role!=='admin')throw new HttpError(403,'본인의 포스트만 수정할 수 있습니다.');
   if(id&&(typeof b.revision!=='number'||!Number.isSafeInteger(b.revision)))throw new HttpError(400,'포스트 버전을 확인해 주세요.');
+  const kind=b.kind??existing?.kind??'post';
   const ownerId=existing?.author_id??user.id,labels=await postLabels(env.DB,ownerId,b,id),postId=id??randomUUID(),token=randomUUID();
   const write=!id?
-    env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc,taxonomy_write_token) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(postId,user.id,b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,b.status==='published'?now():null,JSON.stringify(topicIds),document.format,document.document,token):
-    env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,id,b.revision);
+    env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc,taxonomy_write_token,kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(postId,user.id,b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,b.status==='published'?now():null,JSON.stringify(topicIds),document.format,document.document,token,kind):
+    env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,kind=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,kind,id,b.revision);
   if(imageKey)mediaKeys.add(imageKey);
   const mediaWrites=[env.DB.prepare('DELETE FROM post_media WHERE post_id=? AND EXISTS(SELECT 1 FROM posts WHERE id=? AND taxonomy_write_token=?)').bind(postId,postId,token),...[...mediaKeys].map(key=>env.DB.prepare('INSERT INTO post_media(post_id,media_key) SELECT id,? FROM posts WHERE id=? AND taxonomy_write_token=?').bind(key,postId,token))];
   const changes=await env.DB.batch([write,...mediaWrites,...labelWrites(env.DB,postId,token,labels)]);

@@ -10,7 +10,7 @@ export default function ArticlePage({post,loading,error,topics,user,pending,onRe
   const canEdit=user&&['author','admin'].includes(user.role)&&(user.role==='admin'||user.id===post.writer.id);
   return <article className="reader-page" aria-labelledby="reader-title" aria-busy={loading}>
     <header className="reader-hero">
-      <div className="reader-eyebrow"><button data-category={post.category}>{topicName(topics,post.category)}</button>{post.status==='draft'&&<span>초안</span>}</div>
+      <div className="reader-eyebrow">{post.kind==='notice'&&<span>공지</span>}<button data-category={post.category}>{topicName(topics,post.category)}</button>{post.status==='draft'&&<span>초안</span>}</div>
       <h2 id="reader-title" tabIndex={-1}>{post.title}</h2>{post.summary&&<p className="reader-summary">{post.summary}</p>}
       <div className="reader-byline"><button className="reader-writer" data-author={post.writer.id} data-author-name={post.writer.name}><Avatar writer={post.writer}/><span><strong>{post.writer.name}</strong><small><time dateTime={new Date((post.published_at??post.created_at)*1000).toISOString()}>{postDate(post)}</time> · {Math.max(1,Math.ceil(post.body.length/500))}분 읽기</small></span></button>{canEdit&&<button className="pill" onClick={()=>onEdit(post)}>포스트 수정</button>}</div>
     </header>

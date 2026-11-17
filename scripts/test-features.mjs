@@ -52,6 +52,7 @@ try {
   await migrate('0014_security_performance.sql');
   await migrate('0015_media_references.sql');
   await migrate('0016_session_inactivity.sql');
+  await migrate('0017_notices_reading_history.sql');
   assert.deepEqual(JSON.parse((await db.prepare("SELECT topic_ids FROM posts WHERE id='pre-migration'").first()).topic_ids),['tech']);
   const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site, headers = {} } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
   const sessionCookie = r => { const match = r.headers.get('set-cookie')?.match(/__Host-ark_session=[a-f0-9]{64}/); assert.ok(match); return match[0]; };

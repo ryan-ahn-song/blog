@@ -31,6 +31,7 @@
     "test:applications": "npm run build:backend && node scripts/test-applications.mjs",
     "test:account-controls": "npm run build:backend && node scripts/test-account-controls.mjs",
     "test:embeds": "node scripts/test-embeds.mjs",
+    "test:notices-history": "npm run build:backend && node scripts/test-notices-history.mjs",
     "test:security-performance": "npm run build:backend && node scripts/test-security-performance.mjs && node scripts/test-reader-cache.mjs"
   },
   "devDependencies": {

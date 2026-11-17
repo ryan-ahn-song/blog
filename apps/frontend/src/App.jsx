@@ -26,6 +26,7 @@ export default function App() {
   const [editing, setEditing] = useState(null), [dirty, setDirty] = useState(false), [version, setVersion] = useState(0), [requestPage, setRequestPage] = useState(0);
   const feedCache=useRef(new Map());
   const [feed, setFeed] = useState(emptyFeed), [topics, setTopics] = useState([]), [writers, setWriters] = useState([]), [writerTotal, setWriterTotal] = useState(0), [writerPage, setWriterPage] = useState(0);
+  const [topicsError,setTopicsError]=useState('');
   const [catalogLoading, setCatalogLoading] = useState(true), [catalogError, setCatalogError] = useState('');
   const [searchWriters, setSearchWriters] = useState({ writers: [], loading: false, error: '' });
   const [pending, setPending] = useState(new Set()), [message, setMessage] = useState('');
@@ -38,7 +39,7 @@ export default function App() {
   const searchRef = useRef(null), surfaceRef = useRef(null), articleRequest = useRef(0), reactionRequests=useRef(new Set());
   const canWrite = Boolean(user && ['author', 'admin'].includes(user.role));
   const canStartPost = canWrite && (view !== 'author' || author?.id === user.id);
-  const criteria = JSON.stringify({ bookmarked: view === 'saved' ? '1' : undefined, subscribed:view==='subscriptions'?'1':undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined,writer_category:view==='author'?writerFilters.category??undefined:undefined,writer_tag:view==='author'?writerFilters.tag??undefined:undefined });
+  const criteria = JSON.stringify({ kind:view==='author'?(writerFilters.kind??'post'):undefined, bookmarked: view === 'saved' ? '1' : undefined, subscribed:view==='subscriptions'?'1':undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined,writer_category:view==='author'?writerFilters.category??undefined:undefined,writer_tag:view==='author'?writerFilters.tag??undefined:undefined });
   const feedKey = criteria + ':' + (user?.id ?? 'anonymous')+':'+version+':'+subscriptionVersion+':'+taxonomyVersion;
   const currentFeed = feed.key === feedKey ? feed : feedCache.current.get(feedKey)??{ ...emptyFeed, key: feedKey };
   const title = author ? author.name || '필자 프로필' : category !== 'all' ? topicName(topics, category) : { home: '홈', search: '검색', writers: '필자', saved: '저장한 포스트', subscriptions:'구독한 포스트', write: '포스트 작성', 'my-posts': '내 포스트 관리', admin: '멤버 관리' }[view];
@@ -67,16 +68,16 @@ export default function App() {
     if (params.has('auth') || params.has('auth_error')) { const url = new URL(location.href); url.searchParams.delete('auth'); url.searchParams.delete('auth_error'); history.replaceState(null, '', url.href); }
   }, []);
   useEffect(() => {
-    const controller=new AbortController();setCatalogError('');
-    api('/api/topics',{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setTopics(result.topics);}).catch(error=>{if(!controller.signal.aborted)setCatalogError(error.message);});
+    const controller=new AbortController();setTopicsError('');
+    api('/api/topics',{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setTopics(result.topics);}).catch(error=>{if(!controller.signal.aborted&&error.name!=='AbortError')setTopicsError(error.message);});
     return()=>controller.abort();
   },[version]);
   useEffect(()=>{
-    if(view!=='writers'||articleId)return;
+    if(authChecking||view!=='writers'||articleId)return;
     const controller=new AbortController();setCatalogLoading(!writers.length);setCatalogError('');
     api('/api/writers',{signal:controller.signal}).then(people=>{if(!controller.signal.aborted){setWriters(people.writers);setWriterTotal(people.total);setWriterPage(0);}}).catch(error=>{if(!controller.signal.aborted)setCatalogError(error.message);}).finally(()=>{if(!controller.signal.aborted)setCatalogLoading(false);});
     return()=>controller.abort();
-  },[view,version,articleId]);
+  },[view,version,articleId,authChecking]);
   useEffect(() => {
     if (authChecking||articleId||!browsing.includes(view) || (['saved','subscriptions'].includes(view) && !user)) return;
     const controller = new AbortController();
@@ -92,13 +93,13 @@ export default function App() {
   }, [view, criteria, feedKey, requestPage, version, subscriptionVersion, taxonomyVersion,authChecking,articleId]);
   useEffect(()=>{if(feed.key&&!feed.loading&&!feed.error){feedCache.current.set(feed.key,feed);while(feedCache.current.size>12)feedCache.current.delete(feedCache.current.keys().next().value);}},[feed]);
   useEffect(() => {
-    if (view !== 'search') return;
+    if (authChecking||view !== 'search') return;
     const controller = new AbortController(); setSearchWriters({ writers: [], loading: true, error: '' });
     const timer = setTimeout(() => api('/api/writers?' + new URLSearchParams({ q: query.trim(), topic: topicId }), { signal: controller.signal }).then(result => {
       if (!controller.signal.aborted) setSearchWriters({ writers: result.writers, loading: false, error: '' });
     }).catch(e => { if (!controller.signal.aborted) setSearchWriters({ writers: [], loading: false, error: e.message }); }), 250);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [view, query, topicId, version]);
+  }, [view, query, topicId, version,authChecking]);
   useEffect(() => { document.title = (articleId?(article?.title??'포스트 읽기'):title) + ' | 21st ARK'; }, [title,articleId,article?.title]);
   useEffect(() => { if (view === 'search'&&!articleId) searchRef.current?.focus({ preventScroll: true }); }, [view,articleId]);
   useLayoutEffect(()=>{
@@ -170,6 +171,7 @@ export default function App() {
     articleIdRef.current=id;setArticleId(id);setArticleError('');setArticleLoading(true);if(!same||refresh)setArticle(null);if(!refresh)readerScroll.current=0;
     const request=++articleRequest.current;
     try{const result=await api('/api/posts/'+id);if(request!==articleRequest.current)return;setArticle(result.post);
+      if(!refresh&&result.post.status==='published'&&activeUserId.current){const actor=activeUserId.current;readQueue=readQueue.catch(()=>{}).then(()=>activeUserId.current===actor?api('/api/reading-history',jsonRequest('POST',{post_id:id})):null).catch(()=>{});}
       if(!refresh&&result.post.status==='published'&&navigator.doNotTrack!=='1'&&!navigator.globalPrivacyControl){readQueue=readQueue.catch(()=>{}).then(()=>api('/api/posts/'+id+'/view',jsonRequest('POST',{}))).catch(()=>{});}
     }catch(e){if(request===articleRequest.current){setArticle(null);setArticleError(e.message);}}
     finally{if(request===articleRequest.current)setArticleLoading(false);}
@@ -222,13 +224,14 @@ export default function App() {
   else if (view === 'search') content = <Explore topics={topics} writers={searchWriters.writers} writersLoading={searchWriters.loading} writersError={searchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error}/>;
   else if (currentFeed.loading && !currentFeed.posts.length) content = <p className="content-loading" role="status">포스트를 불러오고 있어요.</p>;
   else if (currentFeed.posts.length) content = currentFeed.posts.map((p, i) => <PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>);
-  else if (!currentFeed.error) content = <EmptyState title={view==='subscriptions'?'구독한 필자의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>필자 페이지에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">필자 둘러보기</button></>:view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
+  else if (!currentFeed.error) content = <EmptyState title={view==='author'&&writerFilters.kind==='notice'?'아직 업로드된 공지가 없어요.':view==='subscriptions'?'구독한 필자의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && !(view==='author'&&writerFilters.kind==='notice') && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>필자 페이지에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">필자 둘러보기</button></>:view==='author'&&writerFilters.kind==='notice'?(canStartPost?'상단의 포스트 작성에서 게시 종류를 공지로 선택해 보세요.':'새로운 공지가 올라오면 이곳에서 읽을 수 있어요.'):view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
 
   return <>
     <AppShell reading={Boolean(articleId)} onBack={returnFromArticle} reader={<ArticlePage post={article} loading={articleLoading} error={articleError} topics={topics} user={user} pending={pending} onRetry={()=>openArticle(articleId,false)} onEdit={editPost} onLogin={()=>{setAuthOpen(true);refreshAuth();}}/>} view={view} title={title} query={query} category={category} onSearch={e => { setQuery(e.target.value); setRequestPage(0); }} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} onSettings={setSettings} onLogout={logout} loggingOut={loggingOut} onAdmin={()=>navigate('admin')} sidebarRefresh={version+':'+subscriptionVersion} onLogin={()=>setAuthOpen(true)} user={user} onProfile={() => { if(user)openWriter(user.id,user.name);else{setAuthOpen(true);refreshAuth();} }}>
-      {view!=='author' && catalogError && <p className="auth-error" role="alert">분류 정보를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
+      {topicsError && ['write','search'].includes(view) && <p className="auth-error" role="alert">분류 정보를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
+      {view==='writers'&&catalogError&&<p className="auth-error" role="alert">필자를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {browsing.includes(view) && currentFeed.error && <p className="auth-error" role="alert">{currentFeed.error} <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
-      {view==='author'&&author?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='clear'?{category:null,tag:null}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={account=>{setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);setAuthor({id:account.id,name:account.name});refreshContent();}} onShare={async id=>{try{await navigator.clipboard.writeText(location.origin+'/#writer-'+id);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
+      {view==='author'&&author?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='kind'?{category:null,tag:null,kind:id}:kind==='clear'?{category:null,tag:null,kind:previous.kind??'post'}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={account=>{setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);setAuthor({id:account.id,name:account.name});refreshContent();}} onShare={async id=>{try{await navigator.clipboard.writeText(location.origin+'/#writer-'+id);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
       {view!=='author' && browsing.includes(view) && currentFeed.posts.length < currentFeed.total && <button className="pill load-more" disabled={currentFeed.loading} onClick={() => { setRequestPage(currentFeed.page + 1); if (currentFeed.error) setVersion(v => v + 1); }}>{currentFeed.loading ? '불러오는 중…' : '포스트 더 보기'}</button>}
     </AppShell>
     <SettingsDialog onDeleted={accountDeleted} onRoleChanged={refreshAuth} section={settings} onClose={()=>setSettings(null)} user={user} onLogin={()=>setAuthOpen(true)}/>

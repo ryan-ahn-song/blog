@@ -23,6 +23,8 @@ try{
  setApiScope('other-account');const next=api('/api/posts?page=0');assert.equal(calls,2,'Accounts cannot share a cached response');resolve();await next;
  clearApiCache();const pending=api('/api/posts?page=0');setApiScope('third-account');resolve();await assert.rejects(pending,error=>error.name==='AbortError');const third=api('/api/posts?page=0');assert.equal(calls,4,'A late response never populates a different account cache');resolve();await third;
  const mutation=api('/api/posts/example',{method:'DELETE'});resolve();await mutation;const reloaded=api('/api/posts?page=0');assert.equal(calls,6,'Content writes invalidate the cache');resolve();await reloaded;
+ clearApiCache();const catalog=api('/api/topics');setApiScope('initial-auth-resolved');resolve();assert.ok(await catalog,'Public catalog survives initial auth scope resolution');
+ const trending=api('/api/trending');setApiScope('another-account');resolve();assert.ok(await trending,'Public trending survives account changes');
  const controller=new AbortController();controller.abort();await assert.rejects(api('/api/posts?page=0',{signal:controller.signal}),error=>error.name==='AbortError');
  console.log('Reader and client cache passed: supported structured blocks, Markdown, explicit embeds, XSS/unsafe URL rejection; deduplication, account isolation, late response isolation, invalidation and cancellation.');
 }finally{globalThis.fetch=originalFetch;await vite.close();}
