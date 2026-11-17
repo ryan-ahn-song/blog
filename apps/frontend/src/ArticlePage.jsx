@@ -3,6 +3,7 @@ import DocumentBody from './DocumentBody';
 import {Avatar,Icon,postDate,topicName} from './ContentViews';
 import CommentsSection from './CommentsSection';
 import {writerPath} from '../../../shared/paths';
+import {shortName} from './display-name';
 
 export default function ArticlePage({post,loading,error,topics,user,pending,onRetry,onEdit,onLogin}){
   useEffect(()=>{if(post)document.getElementById('reader-title')?.focus({preventScroll:true});},[post?.id]);
@@ -13,7 +14,7 @@ export default function ArticlePage({post,loading,error,topics,user,pending,onRe
     <header className="reader-hero">
       <div className="reader-eyebrow">{post.kind==='notice'&&<span>공지</span>}<button data-category={post.category}>{topicName(topics,post.category)}</button>{post.status==='draft'&&<span>초안</span>}</div>
       <h2 id="reader-title" tabIndex={-1}>{post.title}</h2>{post.summary&&<p className="reader-summary">{post.summary}</p>}
-      <div className="reader-byline"><a href={writerPath(post.writer)} data-username={post.writer.username} className="reader-writer" data-author={post.writer.id} data-author-name={post.writer.name}><Avatar writer={post.writer}/><span><strong>{post.writer.name}</strong><small><time dateTime={new Date((post.published_at??post.created_at)*1000).toISOString()}>{postDate(post)}</time></small></span></a>{canEdit&&<button className="pill" onClick={()=>onEdit(post)}>포스트 수정</button>}</div>
+      <div className="reader-byline"><a href={writerPath(post.writer)} data-username={post.writer.username} className="reader-writer" data-author={post.writer.id} data-author-name={post.writer.name}><Avatar writer={post.writer}/><span><strong title={post.writer.name}>{shortName(post.writer.name)}</strong><small><time dateTime={new Date((post.published_at??post.created_at)*1000).toISOString()}>{postDate(post)}</time></small></span></a>{canEdit&&<button className="pill" onClick={()=>onEdit(post)}>포스트 수정</button>}</div>
     </header>
     {post.image&&<figure className="reader-cover"><img src={post.image} alt={post.title} fetchPriority="high"/></figure>}
     <div className="article-content reader-body"><DocumentBody post={post}/></div>

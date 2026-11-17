@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import {writerPath,postPath} from '../../../shared/paths';
+import {shortName} from './display-name';
 
 export function topicName(topics, id) { return topics.find(t => t.id === id)?.name ?? '주제'; }
 export function postDate(post) { return new Date((post.published_at ?? post.created_at) * 1000).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }); }
@@ -21,7 +22,7 @@ const paths = {
 export function Icon({ name }) { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]}/></svg>; }
 export function PostCard({ post: p, topics, first, pending }) {
   return <article className="post">
-    <header className="post-header"><a href={writerPath(p.writer)} data-username={p.writer.username} className="author-avatar-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name+'의 프로필'}><Avatar writer={p.writer}/></a><a href={writerPath(p.writer)} data-username={p.writer.username} className="author-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name + '의 프로필 보기'}><strong>{p.writer.name}</strong><time dateTime={new Date((p.published_at ?? p.created_at) * 1000).toISOString()}>{postDate(p)}</time></a><button className="post-category" data-category={p.category}>{topicName(topics, p.category)}</button></header>
+    <header className="post-header"><a href={writerPath(p.writer)} data-username={p.writer.username} className="author-avatar-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name+'의 프로필'}><Avatar writer={p.writer}/></a><a href={writerPath(p.writer)} data-username={p.writer.username} className="author-button" data-author={p.writer.id} data-author-name={p.writer.name} aria-label={p.writer.name + '의 프로필 보기'}><strong title={p.writer.name}>{shortName(p.writer.name)}</strong><time dateTime={new Date((p.published_at ?? p.created_at) * 1000).toISOString()}>{postDate(p)}</time></a><button className="post-category" data-category={p.category}>{topicName(topics, p.category)}</button></header>
     {p.kind==='notice'&&<span className="post-kind-badge">공지</span>}<a href={postPath(p)} className="post-title" data-post={p.id}><h2>{p.title}</h2></a>{p.summary && <p className="post-summary">{p.summary}</p>}
     {(p.writer_category||p.writer_tags?.length>0)&&<div className="post-writer-labels" aria-label="필자의 분류와 태그">{p.writer_category&&<span className="post-writer-category">{p.writer_category.name}</span>}{p.writer_tags?.map(tag=><span key={tag.id}>#{tag.name}</span>)}</div>}
     {p.image ? <a href={postPath(p)} className="post-visual" data-post={p.id} aria-label={p.title + ' 읽기'}><img src={p.image} alt={p.title} fetchPriority={first ? 'high' : 'auto'} loading={first ? 'eager' : 'lazy'}/><span className="visual-overlay"><span>{topicName(topics, p.category)}</span><span className="open-circle" aria-hidden="true">↗</span></span></a> : <a href={postPath(p)} className="post-text-preview" data-post={p.id} aria-label={p.title + ' 읽기'}>{excerpt(p)}</a>}
@@ -29,7 +30,7 @@ export function PostCard({ post: p, topics, first, pending }) {
   </article>;
 }
 export function EmptyState({ title, children, action, onAction }) { return <div className="empty"><strong>{title}</strong>{children && <p>{children}</p>}{action && <button className="pill" onClick={onAction}>{action}</button>}</div>; }
-export function WriterList({ writers }) { return <div className="writer-grid">{writers.map(w => <a href={writerPath(w)} data-username={w.username} key={w.id} className="writer-card" data-author={w.id} data-author-name={w.name}><Avatar writer={w}/><strong>{w.name}</strong>{w.bio && <p>{w.bio}</p>}<small>업로드한 포스트 {w.post_count}개 · 프로필 보기 ↗</small></a>)}</div>; }
+export function WriterList({ writers }) { return <div className="writer-grid">{writers.map(w => <a href={writerPath(w)} data-username={w.username} key={w.id} className="writer-card" data-author={w.id} data-author-name={w.name}><Avatar writer={w}/><strong title={w.name}>{shortName(w.name)}</strong>{w.bio && <p>{w.bio}</p>}<small>업로드한 포스트 {w.post_count}개 · 프로필 보기 ↗</small></a>)}</div>; }
 export function Explore({ topics, writers, writersLoading, writersError, posts, total, query, topicId, loading, error }) {
   const strip = useRef(null);
   const [edges, setEdges] = useState({ start: true, end: true });
@@ -39,7 +40,7 @@ export function Explore({ topics, writers, writersLoading, writersError, posts, 
   return <>
     <section className="explore-section"><div className="explore-heading"><h2>{query || topicId !== 'all' ? '포스트를 쓰는 필자' : '함께 읽는 필자'}</h2><div className="carousel-controls"><button onClick={() => slide(-1)} disabled={edges.start} aria-label="이전 필자">‹</button><button onClick={() => slide(1)} disabled={edges.end} aria-label="다음 필자">›</button></div></div>
       {writersError ? <p className="auth-error" role="alert">{writersError}</p> : writersLoading ? <p className="explore-empty" role="status">필자를 불러오고 있어요.</p> : null}
-      <div className="creator-strip" ref={strip} onScroll={update}>{writers.map(w => <a href={writerPath(w)} data-username={w.username} className="creator-card" key={w.id} data-author={w.id} data-author-name={w.name}><span className="creator-picture creator-initial">{w.avatar_url?<img src={w.avatar_url} alt="" loading="lazy"/>:<span>{Array.from(w.name)[0]}</span>}</span><strong>{w.name}</strong><small>{w.bio || '업로드한 포스트 ' + w.post_count + '개'}</small></a>)}</div>
+      <div className="creator-strip" ref={strip} onScroll={update}>{writers.map(w => <a href={writerPath(w)} data-username={w.username} className="creator-card" key={w.id} data-author={w.id} data-author-name={w.name}><span className="creator-picture creator-initial">{w.avatar_url?<img src={w.avatar_url} alt="" loading="lazy"/>:<span>{Array.from(w.name)[0]}</span>}</span><strong title={w.name}>{shortName(w.name)}</strong><small>{w.bio || '업로드한 포스트 ' + w.post_count + '개'}</small></a>)}</div>
       {!writersLoading && !writersError && !writers.length && <p className="explore-empty">일치하는 필자가 없어요.</p>}
     </section>
     <section className="explore-section"><div className="explore-heading"><h2>{query || topicId !== 'all' ? '검색한 포스트' : '최신 포스트'} <small>{total}</small></h2></div>{loading && !posts.length ? <p role="status">포스트를 불러오고 있어요.</p> : error ? null : posts.length ? <div className="explore-results">{posts.map(p => <a href={postPath(p)} key={p.id} className="explore-result" data-post={p.id}><span className="result-category">{topicName(topics, p.category)}</span><strong>{p.title}</strong><p>{p.summary}</p><small>{p.writer.name} · {postDate(p)}</small></a>)}</div> : <p className="explore-empty">일치하는 포스트가 없어요.</p>}</section>

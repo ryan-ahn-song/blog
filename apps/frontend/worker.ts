@@ -15,15 +15,16 @@ export default {
       url.protocol='https:';return new Response(null,{status:308,headers:{Location:url.href,'Cache-Control':'no-store'}});
     }
     let response:Response,canonical:string|undefined;
+    if(url.pathname==='/'&&['GET','HEAD'].includes(request.method))return new Response(null,{status:301,headers:{Location:CANONICAL_ORIGIN+'/home'+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
     if(!api&&['GET','HEAD'].includes(request.method)&&!url.pathname.startsWith('/assets/')){
       const map=await sitemapResponse(url,env);
       if(map)response=map;
       else{
         const {status,page}=await loadPublicPage(url,env);
-        if(page&&url.pathname!==page.path)return new Response(null,{status:301,headers:{Location:new URL(page.path,CANONICAL_ORIGIN).href,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+        if(page&&url.pathname!==page.path)return new Response(null,{status:301,headers:{Location:new URL(page.path+(page.type==='app'||page.type==='home'||page.type==='people'?url.search:''),CANONICAL_ORIGIN).href,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
         const asset=await env.ASSETS.fetch(new Request(new URL('/',url),{headers:{Accept:'text/html'}}));
         const headers=new Headers(asset.headers);headers.delete('ETag');headers.delete('Content-Length');headers.set('Content-Type','text/html; charset=utf-8');headers.set('Cache-Control','private, no-store');
-        if(page)canonical=new URL(page.path,CANONICAL_ORIGIN).href;else headers.set('X-Robots-Tag','noindex, nofollow');
+        if(page)canonical=new URL(page.path,CANONICAL_ORIGIN).href;if(!page||page.indexable===false)headers.set('X-Robots-Tag','noindex, nofollow');
         response=new Response(applyPublicHtml(await asset.text(),page,status),{status,headers});
       }
     }else response=await (api?env.API:env.ASSETS).fetch(request);

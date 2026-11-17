@@ -3,7 +3,7 @@ import { renderToString } from 'react-dom/server';
 import { createElement } from 'react';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-globalThis.location = { hash: '' };
+globalThis.location = {hash:'',pathname:'/home',search:'',origin:'http://127.0.0.1:3000'};
 Object.defineProperty(globalThis, 'localStorage', { value: { getItem: () => null }, configurable: true });
 const vite = await createServer({ root: fileURLToPath(new URL('../apps/frontend', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' });
 try {
