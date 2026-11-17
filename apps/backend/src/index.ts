@@ -11,6 +11,7 @@ import { handleApplications } from './applications';
 import { HttpError, json } from './http';
 import type { AuthEnv } from './session';
 import {handleReadingHistory} from './reading-history';
+import {publicPage,socialImage,sitemapData} from './seo';
 export interface Env extends AuthEnv { MEDIA: R2Bucket; MEDIA_BASE_URL?: string }
 export default {
   async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){
@@ -24,6 +25,9 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     try {
+      if(path==='/api/seo/page')return await publicPage(request,env);
+      if(path==='/api/seo/sitemap')return await sitemapData(request,env);
+      if(/^\/api\/social\/(posts|writers)\/[\w-]+\/image$/.test(path))return await socialImage(request,env);
       if (path.startsWith('/api/auth/')) return await handleAuth(request, env);
       if(path==='/api/writer-applications'||/^\/api\/admin\/writer-applications(?:\/[\w-]+)?$/.test(path))return await handleApplications(request,env);
       if (path.startsWith('/api/admin/')) return await handleAdmin(request, env);
@@ -35,7 +39,7 @@ export default {
       if(path==='/api/author/dashboard')return await authorDashboard(request,env);
       if(path==='/api/reading-history')return await handleReadingHistory(request,env);
       if (path === '/api/media' || path.startsWith('/api/media/')) return await handleMedia(request, env);
-      if (path === '/api/writers'||/^\/api\/writers\/[\w-]+$/.test(path)) return await handleWriters(request,env);
+      if (path === '/api/writers'||/^\/api\/writers\/[\w-]+$/.test(path)||/^\/api\/writers\/by-name\/[^/]+$/.test(path)) return await handleWriters(request,env);
       if (path === '/api/topics') return await handleTopics(request,env);
       if (path === '/api/trending') return await handleTrending(request,env);
       if(path==='/api/subscriptions'||/^\/api\/writers\/[\w-]+\/subscription$/.test(path))return await handleSubscriptions(request,env);

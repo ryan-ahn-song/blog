@@ -6,12 +6,14 @@ import { json, readBody, HttpError } from './http';
 import { handleGoogle } from './google';
 import { handleGitHub } from './github';
 import { profileImageKey } from './media';
-import { type AuthEnv, type UserRow, currentUser, requireUser, publicUser, checkOrigin, readCookie, cookie, digest } from './session';
+import {checkUsername,requiredUsername,availableUsername} from './usernames';
+import { type AuthEnv, type UserRow, currentUser, requireUser, publicUser, checkOrigin, readCookie, cookie, digest,limited } from './session';
 export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucket;MEDIA_BASE_URL?:string}): Promise<Response> {
   const path = new URL(request.url).pathname;
   if (path === '/api/auth/google' || path === '/api/auth/callback/google') return handleGoogle(request, env);
   if(path==='/api/auth/github'||path==='/api/auth/callback/github')return handleGitHub(request,env);
   if(path==='/api/auth/signup')return handleSignup(request,env);
+  if(path==='/api/auth/username-availability')return checkUsername(request,env);
   if(path==='/api/auth/legal'&&request.method==='GET')return json(legal);
   if (request.method === 'GET' && path === '/api/auth/providers') return json({ google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),github:Boolean(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET) });
   if (request.method === 'GET' && path === '/api/auth/me') {
@@ -27,6 +29,14 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
     const body = await readBody(request);
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length>80 || typeof body.bio !== 'string' || body.bio.length>160 || typeof body.version !== 'number' || !Number.isSafeInteger(body.version)) throw new HttpError(400,'이름(80자)과 소개(160자)를 확인해 주세요.');
     const name=displayName(body.name);
+    const handle=body.username===undefined?{username:actor.username||'user-'+actor.id,key:actor.username_key||'user-'+actor.id}:requiredUsername(body.username);
+    if(!await availableUsername(env,handle.key,actor.id))throw new HttpError(409,'이미 사용 중이거나 이전 주소로 보존된 유저네임입니다.');
+    if(handle.key!==actor.username_key){
+      if(await limited(env.DB,digest('username-change:'+actor.id),10))throw new HttpError(429,'유저네임 변경이 많습니다. 잠시 후 다시 시도해 주세요.');
+      const alias=await env.DB.prepare('SELECT user_id FROM username_aliases WHERE username_key=?').bind(handle.key).first();
+      const count=await env.DB.prepare('SELECT count(*) AS total FROM username_aliases WHERE user_id=?').bind(actor.id).first<{total:number}>();
+      if(!alias&&(count?.total??0)>=50)throw new HttpError(409,'보존된 이전 주소가 많습니다. 운영자에게 문의해 주세요.');
+    }
     const images:{avatar_key:string|null;cover_key:string|null}={avatar_key:actor.avatar_key,cover_key:actor.cover_key};
     for(const field of ['avatar_key','cover_key'] as const){
       if(body[field]===undefined)continue;
@@ -37,7 +47,11 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
       if(!await env.MEDIA.head(key))throw new HttpError(400,'프로필 이미지가 존재하지 않습니다.');
       images[field]=key;
     }
-    const user = await env.DB.prepare('UPDATE auth_users SET name=?,bio=?,avatar_key=?,cover_key=?,version=version+1 WHERE id=? AND version=? RETURNING *').bind(name,body.bio.trim(),images.avatar_key,images.cover_key,actor.id,body.version).first<UserRow>();
+    const changed=await env.DB.batch([
+      env.DB.prepare('INSERT INTO username_aliases(username_key,username,user_id) SELECT ?,?,id FROM auth_users WHERE id=? AND version=? ON CONFLICT(username_key) DO UPDATE SET username=excluded.username WHERE username_aliases.user_id=excluded.user_id').bind(handle.key,handle.username,actor.id,body.version),
+      env.DB.prepare('UPDATE auth_users SET name=?,bio=?,avatar_key=?,cover_key=?,username=?,username_key=?,username_confirmed=?,version=version+1 WHERE id=? AND version=? AND EXISTS(SELECT 1 FROM username_aliases WHERE username_key=? AND user_id=?) RETURNING *').bind(name,body.bio.trim(),images.avatar_key,images.cover_key,handle.username,handle.key,body.username===undefined?actor.username_confirmed:1,actor.id,body.version,handle.key,actor.id),
+    ]);
+    const user=changed[1].results[0] as UserRow|undefined;
     if (!user) throw new HttpError(409,'프로필이나 권한이 변경되었습니다. 프로필을 다시 열어 주세요.');
     return json({user:publicUser(user,request,env)});
   }

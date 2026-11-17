@@ -9,7 +9,7 @@
 | 빌드 | npm run build:frontend | npm run build:backend |
 | 배포 | npm run deploy:frontend | npm run deploy:backend |
 
-API 배포 명령은 D1 원격 마이그레이션을 먼저 적용합니다. 0014 → 0015 → 0016을 적용한 뒤 새 API를 배포합니다. 웹은 API service binding을 사용합니다. workers.dev와 Preview URL은 양쪽 Worker에서 끄며 공개 접속은 Custom Domain으로만 받습니다.
+API 배포 명령은 D1 원격 마이그레이션을 먼저 적용합니다. 0018_usernames.sql까지 순서대로 적용한 뒤 새 API를 배포합니다. 웹은 API service binding을 사용합니다. workers.dev와 Preview URL은 양쪽 Worker에서 끄며 공개 접속은 Custom Domain으로만 받습니다.
 
 프론트 assets.run_worker_first=true는 HTML의 CSP/HSTS/클릭재킹 방지 헤더와 도메인 이동이 정적 파일 응답에서도 적용되게 합니다. 정적 자산 요청도 Worker 실행을 통과하므로 Workers 요청 사용량을 함께 확인합니다. API 오류 로그는 활성화하되 invocation_logs와 traces는 꺼 OAuth 코드·쿠키가 요청 로그에 저장되지 않게 합니다.
 
@@ -17,4 +17,4 @@ API 배포 명령은 D1 원격 마이그레이션을 먼저 적용합니다. 001
 
 OAuth의 신규 시작 주소와 Homepage URL은 https://21st-ark.dev, 콜백은 /api/auth/callback/google 및 /api/auth/callback/github입니다. Google 승인된 JavaScript 원본에는 https://21st-ark.dev를 유지합니다. 전환 기간에는 기존 21stark.dev 콜백 등록과 AUTH_ORIGINS를 함께 유지합니다. 로컬은 http://127.0.0.1:3000을 사용합니다.
 
-로컬 검증: npm run check, npm run test:security-performance, npm run test:features, npm run test:github, npm run test:account-controls, npm run test:render. 운영 설정은 docs/owasp-review.md의 실측 결과를 확인합니다.
+로컬 검증: npm run check, npm run test:security-performance, npm run test:features, npm run test:github, npm run test:account-controls, npm run test:render, npm run test:seo-usernames. 운영 설정은 docs/owasp-review.md의 실측 결과를 확인합니다. 유저네임 주소·공유 미리보기·검색 수집의 동작과 배포 후 확인 사항은 docs/public-urls-and-search.md에 정리되어 있습니다.

@@ -3,6 +3,7 @@ import type { AuthEnv } from './session';
 import { currentUser } from './session';
 import { mediaUrl } from './media';
 import { now } from './session';
+import {usernameKey} from '../../../shared/usernames';
 export type Topic = {id: string; name: string; category: string; color: string; symbol: string; position: number; post_count?: number};
 export async function topicsForPost(db: D1Database, category: string, input: unknown): Promise<string[]> {
   if (input !== undefined && (!Array.isArray(input) || input.length > 8 || input.some(id => typeof id !== 'string'))) throw new HttpError(400,'주제를 다시 선택해 주세요.');
@@ -22,16 +23,19 @@ export async function handleTrending(request:Request,env:AuthEnv){
   const rows=await env.DB.prepare("SELECT p.id,p.title,p.summary,u.id AS writer_id,u.name AS writer_name,r.view_count FROM posts p JOIN auth_users u ON u.id=p.author_id JOIN (SELECT post_id,sum(views) AS view_count FROM post_reads WHERE read_day>=? AND read_day<=? GROUP BY post_id) r ON r.post_id=p.id WHERE p.status='published' AND p.kind='post' AND u.disabled=0 ORDER BY r.view_count DESC,p.published_at DESC,p.id LIMIT 4").bind(start,today).all<{id:string;title:string;summary:string;writer_id:string;writer_name:string;view_count:number}>();
   return json({posts:rows.results.map(({writer_id,writer_name,...post})=>({...post,writer:{id:writer_id,name:writer_name}})),period_days:7},200,{'Cache-Control':'public, max-age=30'});
 }
-type WriterRow={id:string;name:string;bio:string;avatar_key:string|null;cover_key:string|null;post_count:number;notice_count:number};
+type WriterRow={id:string;name:string;username:string|null;bio:string;avatar_key:string|null;cover_key:string|null;post_count:number;notice_count:number};
 function writerData(writer:WriterRow,request:Request,env:{MEDIA_BASE_URL?:string}){
-  return {id:writer.id,name:writer.name,bio:writer.bio,post_count:writer.post_count,notice_count:writer.notice_count,avatar_url:mediaUrl(writer.avatar_key,request,env),cover_url:mediaUrl(writer.cover_key,request,env)};
+  return {id:writer.id,name:writer.name,username:writer.username||'user-'+writer.id,bio:writer.bio,post_count:writer.post_count,notice_count:writer.notice_count,avatar_url:mediaUrl(writer.avatar_key,request,env),cover_url:mediaUrl(writer.cover_key,request,env)};
 }
 export async function handleWriters(request: Request, env: AuthEnv & {MEDIA_BASE_URL?:string}) {
   if (request.method !== 'GET') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'GET'});
-  const writerId=new URL(request.url).pathname.match(/^\/api\/writers\/([\w-]+)$/)?.[1];
+  const path=new URL(request.url).pathname;
+  let writerId=path.match(/^\/api\/writers\/([\w-]+)$/)?.[1];
+  const handle=path.match(/^\/api\/writers\/by-name\/([^/]+)$/)?.[1];
+  if(handle){let name;try{name=decodeURIComponent(handle);}catch{throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');}const alias=await env.DB.prepare('SELECT user_id FROM username_aliases WHERE username_key=?').bind(usernameKey(name)).first<{user_id:string}>();if(!alias)throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');writerId=alias.user_id;}
   if(writerId){
     const actor=await currentUser(request,env);
-    const writer=await env.DB.prepare("SELECT u.id,u.name,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR u.id=? OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(writerId,actor?.id??'').first<WriterRow>();
+    const writer=await env.DB.prepare("SELECT u.id,u.name,u.username,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR u.id=? OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(writerId,actor?.id??'').first<WriterRow>();
     if(!writer)throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');
     const subscribed=actor?Boolean(await env.DB.prepare('SELECT 1 FROM writer_subscriptions WHERE subscriber_id=? AND writer_id=?').bind(actor.id,writerId).first()):false;
     const reads=await env.DB.prepare("SELECT coalesce(sum(r.views),0) AS total_views FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND p.status='published'").bind(writerId).first<{total_views:number}>();
@@ -47,7 +51,7 @@ export async function handleWriters(request: Request, env: AuthEnv & {MEDIA_BASE
   if (category && category !== 'all') { clauses.push("EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.category=?)"); values.push(category); }
   const page = Math.max(0,Math.min(100000,Number(params.get('page'))||0))|0;
   const where = ' WHERE '+clauses.join(' AND ');
-  const rows = await env.DB.prepare("SELECT u.id,u.name,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u"+where+' ORDER BY post_count DESC,u.created_at,u.id LIMIT 100 OFFSET ?').bind(...values,page*100).all<WriterRow>();
+  const rows = await env.DB.prepare("SELECT u.id,u.name,u.username,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u"+where+' ORDER BY post_count DESC,u.created_at,u.id LIMIT 100 OFFSET ?').bind(...values,page*100).all<WriterRow>();
   const total = await env.DB.prepare('SELECT count(*) AS total FROM auth_users u'+where).bind(...values).first<{total:number}>();
   return json({writers:rows.results.map(w=>writerData(w,request,env)),total:total?.total??0,page});
 }

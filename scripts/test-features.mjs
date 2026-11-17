@@ -53,6 +53,7 @@ try {
   await migrate('0015_media_references.sql');
   await migrate('0016_session_inactivity.sql');
   await migrate('0017_notices_reading_history.sql');
+  await migrate('0018_usernames.sql');
   assert.deepEqual(JSON.parse((await db.prepare("SELECT topic_ids FROM posts WHERE id='pre-migration'").first()).topic_ids),['tech']);
   const call = (path, { cookie, method = 'GET', body, site = origin, type = 'application/json', csrf = site, headers = {} } = {}) => mf.dispatchFetch(site + path, { method, headers: { Origin: csrf, 'Content-Type': type, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) }), redirect: 'manual' });
   const sessionCookie = r => { const match = r.headers.get('set-cookie')?.match(/__Host-ark_session=[a-f0-9]{64}/); assert.ok(match); return match[0]; };
@@ -71,7 +72,7 @@ try {
     if(new URL(response.headers.get('location')).searchParams.get('auth')==='signup'){
       const ticket=response.headers.get('set-cookie').match(/(?:__Host-ark_|ark_)signup=[a-f0-9]{64}/)[0];
       const legal=await (await call('/api/auth/legal',{site})).json();
-      const completed=await call('/api/auth/signup',{site,cookie:ticket,method:'POST',body:{name:'Google 사용자',terms:true,privacy:true,version:legal.version}});
+      const completed=await call('/api/auth/signup',{site,cookie:ticket,method:'POST',body:{name:'Google 사용자',username:subject,terms:true,privacy:true,version:legal.version}});
       assert.equal(completed.status,201);return sessionCookie(completed);
     }
     assert.equal(new URL(response.headers.get('location')).searchParams.get('auth'),'success');return sessionCookie(response);

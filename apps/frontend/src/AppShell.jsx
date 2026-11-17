@@ -5,7 +5,7 @@ export default function AppShell({view,title,query,category,onSearch,onAction,se
 return <div onClick={onAction}>
   <a className="skip" href={reading?'#article-reader':'#feed'} onClick={event=>{event.preventDefault();const target=document.getElementById(reading?'article-reader':'feed');target?.focus({preventScroll:true});target?.scrollIntoView();}}>{reading?'본문으로 건너뛰기':'최신 포스트로 건너뛰기'}</a>
   <aside className="rail" aria-label="사이드 메뉴">
-    <a className="rail-logo" href="./" aria-label="21st ARK 홈"><img src={assetUrl('logo_alone_light-1.svg')} alt="21st ARK" /></a>
+    <a className="rail-logo" href="/" aria-label="21st ARK 홈"><img src={assetUrl('logo_alone_light-1.svg')} alt="21st ARK" /></a>
     <nav aria-label="주요 메뉴">
       <button className={`rail-button ${view === 'home' ? 'active' : ''}`} data-view="home" aria-current={view === 'home' ? 'page' : undefined} aria-label="홈" title="홈"><svg viewBox="0 0 24 24"><path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z"/></svg></button>
       <button className={`rail-button ${view === 'search' ? 'active' : ''}`} data-view="search" aria-current={view === 'search' ? 'page' : undefined} aria-label="검색" title="검색"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg></button>

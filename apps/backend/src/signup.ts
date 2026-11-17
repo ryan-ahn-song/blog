@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { HttpError, json, readBody } from './http';
 import { displayName } from './names';
 import { legal } from './legal';
+import {requiredUsername,availableUsername} from './usernames';
 import { type AuthEnv, type UserRow, now, digest, cookie, readCookie, checkOrigin, createSession, currentUser, publicUser } from './session';
 type Pending = {provider:'google'|'github';subject:string;email:string;suggested_name:string;expires_at:number};
 export async function pendingSignup(request:Request,env:AuthEnv) {
@@ -31,19 +32,23 @@ export async function handleSignup(request:Request,env:AuthEnv&{MEDIA_BASE_URL?:
   if(await currentUser(request,env))throw new HttpError(409,'이미 로그인되어 있습니다. 화면을 새로고침해 주세요.');
   const body=await readBody(request);
   const name=displayName(body.name);
+  const handle=requiredUsername(body.username);
   if(body.terms!==true||body.privacy!==true)throw new HttpError(400,'필수 약관과 개인정보 수집·이용 동의를 확인해 주세요.');
   if(body.version!==legal.version)throw new HttpError(409,'약관이 변경되었습니다. 화면을 새로고침하고 다시 확인해 주세요.');
-  // DELETE RETURNING consumes the one-time ticket before account creation; concurrent requests cannot both succeed.
-  const pending=await env.DB.prepare('DELETE FROM auth_pending_signups WHERE token_hash=? AND expires_at>? RETURNING *').bind(hash,now()).first<Pending>();
+  const pending=await env.DB.prepare('SELECT * FROM auth_pending_signups WHERE token_hash=? AND expires_at>?').bind(hash,now()).first<Pending>();
   if(!pending)throw new HttpError(401,'가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');
+  if(!await availableUsername(env,handle.key)){if(!await pendingSignup(request,env))throw new HttpError(401,'가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');throw new HttpError(409,'이미 사용 중이거나 이전 주소로 보존된 유저네임입니다.');}
   if(await env.DB.prepare('SELECT id FROM auth_users WHERE email=?').bind(pending.email).first())throw new HttpError(409,'이미 가입된 이메일입니다. 기존 계정으로 로그인해 주세요.');
   const id=randomUUID(),role=pending.email===env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()?'admin':'reader',time=now();
   const table=pending.provider==='google'?'auth_google_accounts':'auth_github_accounts';
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO auth_users(id,email,name,role) VALUES(?,?,?,?)').bind(id,pending.email,name,role),
-    env.DB.prepare(`INSERT INTO ${table}(subject,user_id) VALUES(?,?)`).bind(pending.subject,id),
-    env.DB.prepare("INSERT INTO auth_consents(user_id,document,version,accepted_at) VALUES(?,'terms',?,?),(?,'privacy',?,?)").bind(id,legal.version,time,id,legal.version,time),
+  const created=await env.DB.batch([
+    env.DB.prepare('INSERT INTO auth_users(id,email,name,role,username,username_key,username_confirmed) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM auth_pending_signups WHERE token_hash=? AND expires_at>?) AND NOT EXISTS(SELECT 1 FROM username_aliases WHERE username_key=?) RETURNING id').bind(id,pending.email,name,role,handle.username,handle.key,hash,time,handle.key),
+    env.DB.prepare('INSERT INTO username_aliases(username_key,username,user_id) SELECT username_key,username,id FROM auth_users WHERE id=?').bind(id),
+    env.DB.prepare(`INSERT INTO ${table}(subject,user_id) SELECT ?,id FROM auth_users WHERE id=?`).bind(pending.subject,id),
+    env.DB.prepare("INSERT INTO auth_consents(user_id,document,version,accepted_at) SELECT id,'terms',?,? FROM auth_users WHERE id=? UNION ALL SELECT id,'privacy',?,? FROM auth_users WHERE id=?").bind(legal.version,time,id,legal.version,time,id),
+    env.DB.prepare('DELETE FROM auth_pending_signups WHERE token_hash=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=?)').bind(hash,id),
   ]);
+  if(!created[0].results.length){if(!await pendingSignup(request,env))throw new HttpError(401,'가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');if(!await availableUsername(env,handle.key))throw new HttpError(409,'이미 사용 중인 유저네임입니다. 다른 이름을 확인해 주세요.');throw new HttpError(401,'가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');}
   const user=await env.DB.prepare('SELECT * FROM auth_users WHERE id=?').bind(id).first<UserRow>();
   const headers=new Headers();headers.append('Set-Cookie',await createSession(request,env,id));headers.append('Set-Cookie',cookie(request,'signup','',0));
   return json({user:publicUser(user!,request,env)},201,headers);

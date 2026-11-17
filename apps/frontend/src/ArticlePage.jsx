@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import DocumentBody from './DocumentBody';
 import {Avatar,Icon,postDate,topicName} from './ContentViews';
 import CommentsSection from './CommentsSection';
+import {writerPath} from '../../../shared/paths';
 
 export default function ArticlePage({post,loading,error,topics,user,pending,onRetry,onEdit,onLogin}){
   useEffect(()=>{if(post)document.getElementById('reader-title')?.focus({preventScroll:true});},[post?.id]);
@@ -12,14 +13,14 @@ export default function ArticlePage({post,loading,error,topics,user,pending,onRe
     <header className="reader-hero">
       <div className="reader-eyebrow">{post.kind==='notice'&&<span>공지</span>}<button data-category={post.category}>{topicName(topics,post.category)}</button>{post.status==='draft'&&<span>초안</span>}</div>
       <h2 id="reader-title" tabIndex={-1}>{post.title}</h2>{post.summary&&<p className="reader-summary">{post.summary}</p>}
-      <div className="reader-byline"><button className="reader-writer" data-author={post.writer.id} data-author-name={post.writer.name}><Avatar writer={post.writer}/><span><strong>{post.writer.name}</strong><small><time dateTime={new Date((post.published_at??post.created_at)*1000).toISOString()}>{postDate(post)}</time> · {Math.max(1,Math.ceil(post.body.length/500))}분 읽기</small></span></button>{canEdit&&<button className="pill" onClick={()=>onEdit(post)}>포스트 수정</button>}</div>
+      <div className="reader-byline"><a href={writerPath(post.writer)} data-username={post.writer.username} className="reader-writer" data-author={post.writer.id} data-author-name={post.writer.name}><Avatar writer={post.writer}/><span><strong>{post.writer.name}</strong><small><time dateTime={new Date((post.published_at??post.created_at)*1000).toISOString()}>{postDate(post)}</time> · {Math.max(1,Math.ceil(post.body.length/500))}분 읽기</small></span></a>{canEdit&&<button className="pill" onClick={()=>onEdit(post)}>포스트 수정</button>}</div>
     </header>
     {post.image&&<figure className="reader-cover"><img src={post.image} alt={post.title} fetchPriority="high"/></figure>}
     <div className="article-content reader-body"><DocumentBody post={post}/></div>
     <footer className="reader-footer">
       {(post.writer_category||post.writer_tags?.length>0)&&<div className="reader-labels" aria-label="필자의 분류와 태그">{post.writer_category&&<span>{post.writer_category.name}</span>}{post.writer_tags?.map(tag=><span key={tag.id}>#{tag.name}</span>)}</div>}
       <div className="reader-actions"><button className="action" data-like={post.id} disabled={pending.has(post.id)} aria-label="좋아요" aria-pressed={post.liked}><Icon name="heart"/><span>{post.like_count}</span></button><button className="action" data-save={post.id} disabled={pending.has(post.id)} aria-label="포스트 저장" aria-pressed={post.saved}><Icon name="bookmark"/></button><button className="action" data-share={post.id} aria-label="포스트 링크 복사"><Icon name="share"/></button></div>
-      <button className="reader-author-link" data-author={post.writer.id} data-author-name={post.writer.name}><span>{post.writer.name}의 다른 포스트 보기</span><span aria-hidden="true">↗</span></button>
+
     </footer>
     {post.status==='published'&&<CommentsSection key={post.id} post={post} user={user} onLogin={onLogin}/>}
   </article>;

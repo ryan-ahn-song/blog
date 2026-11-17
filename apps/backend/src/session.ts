@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { HttpError } from './http';
 import { mediaUrl } from './media';
 export type Role = 'reader' | 'author' | 'admin';
-export type UserRow = { id: string; email: string; name: string; bio: string; avatar_key:string|null; cover_key:string|null; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number; login_version:number };
+export type UserRow = { id: string; email: string; name: string; username:string|null;username_key:string|null;username_confirmed:number; bio: string; avatar_key:string|null; cover_key:string|null; role: Role; password_hash: string | null; disabled: number; version: number; created_at: number; login_version:number };
 export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
 export const now = () => Math.floor(Date.now() / 1000);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -14,7 +14,7 @@ export function readCookie(request: Request, suffix: string) {
 export function cookie(request: Request, suffix: string, value: string, age: number) {
   return cookieName(request, suffix) + '=' + value + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + age + (local(request) ? '' : '; Secure');
 }
-export function publicUser(user: UserRow, request:Request, env:{MEDIA_BASE_URL?:string}) { return { id: user.id, email: user.email, name: user.name, bio: user.bio, role: user.role, version: user.version,avatar_key:user.avatar_key,cover_key:user.cover_key,avatar_url:mediaUrl(user.avatar_key,request,env),cover_url:mediaUrl(user.cover_key,request,env) }; }
+export function publicUser(user: UserRow, request:Request, env:{MEDIA_BASE_URL?:string}) { return { id: user.id, email: user.email, name: user.name, username:user.username||'user-'+user.id,needs_username:!user.username_confirmed, bio: user.bio, role: user.role, version: user.version,avatar_key:user.avatar_key,cover_key:user.cover_key,avatar_url:mediaUrl(user.avatar_key,request,env),cover_url:mediaUrl(user.cover_key,request,env) }; }
 export async function currentUser(request: Request, env: AuthEnv): Promise<UserRow | null> {
   const token = readCookie(request, 'session');
   if (!/^[a-f0-9]{64}$/.test(token)) return null;

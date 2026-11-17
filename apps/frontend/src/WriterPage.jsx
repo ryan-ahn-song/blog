@@ -29,7 +29,7 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
     <div className={'writer-cover '+(!writer.cover_url?'no-cover':'')}>{writer.cover_url&&<img src={writer.cover_url} alt={writer.name+'의 커버'} fetchPriority="high"/>}</div>
     <div className="writer-profile-body">
       <div className="writer-identity-row"><div className="writer-avatar"><Avatar writer={writer}/></div><div className="writer-profile-actions">
-        {own?<button className="pill primary" onClick={()=>setEditing(true)}>프로필 수정</button>:<><button className="pill" onClick={()=>onShare(id)}>프로필 공유 ↗</button><button className={'pill '+(writer.subscribed?'':'primary')} aria-pressed={Boolean(writer.subscribed)} disabled={subscribing} onClick={subscribe}>{subscribing?'처리 중…':writer.subscribed?'구독 중':'구독하기'}</button></>}
+        {own?<button className="pill primary" onClick={()=>setEditing(true)}>프로필 수정</button>:<><button className="pill" onClick={()=>onShare(writer)}>프로필 공유 ↗</button><button className={'pill '+(writer.subscribed?'':'primary')} aria-pressed={Boolean(writer.subscribed)} disabled={subscribing} onClick={subscribe}>{subscribing?'처리 중…':writer.subscribed?'구독 중':'구독하기'}</button></>}
       </div></div>
       {subscriptionError&&<p className="auth-error" role="alert">{subscriptionError}</p>}
       <div className="writer-about"><div><h2>{writer.name}</h2>{writer.bio&&<p>{writer.bio}</p>}</div><dl className="writer-stats"><div><dt>업로드한 포스트</dt><dd>{writer.post_count.toLocaleString()}</dd></div><div><dt>총 조회수</dt><dd>{(writer.total_views??0).toLocaleString()}</dd></div></dl></div>
