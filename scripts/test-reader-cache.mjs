@@ -23,6 +23,7 @@ try{
  setApiScope('other-account');const next=api('/api/posts?page=0');assert.equal(calls,2,'Accounts cannot share a cached response');resolve();await next;
  clearApiCache();const pending=api('/api/posts?page=0');setApiScope('third-account');resolve();await assert.rejects(pending,error=>error.name==='AbortError');const third=api('/api/posts?page=0');assert.equal(calls,4,'A late response never populates a different account cache');resolve();await third;
  const mutation=api('/api/posts/example',{method:'DELETE'});resolve();await mutation;const reloaded=api('/api/posts?page=0');assert.equal(calls,6,'Content writes invalidate the cache');resolve();await reloaded;
+ const beforeHistory=calls,history=api('/api/reading-history',{method:'POST'});resolve();await history;await api('/api/posts?page=0');assert.equal(calls,beforeHistory+1,'Reading history does not invalidate unchanged post content');
  clearApiCache();const catalog=api('/api/topics');setApiScope('initial-auth-resolved');resolve();assert.ok(await catalog,'Public catalog survives initial auth scope resolution');
  const trending=api('/api/trending');setApiScope('another-account');resolve();assert.ok(await trending,'Public trending survives account changes');
  const controller=new AbortController();controller.abort();await assert.rejects(api('/api/posts?page=0',{signal:controller.signal}),error=>error.name==='AbortError');

@@ -13,7 +13,7 @@ export async function api(path,options={}){
     const response=await fetch(path,{credentials:'same-origin',cache:'no-store',...rest,...(!cached&&signal?{signal}:{})});
     const body=await response.json().catch(()=>({}));
     if(!response.ok){if(response.status===401){clearApiCache();if(typeof window!=='undefined')window.dispatchEvent(new Event('ark-auth-expired'));}const error=new Error(body.error||'요청을 처리하지 못했습니다.');error.status=response.status;throw error;}
-    if(method!=='GET'&&!/^\/api\/posts\/[^/]+\/view$/.test(path))clearApiCache();return body;
+    if(method!=='GET'&&path!=='/api/reading-history'&&!/^\/api\/posts\/[^/]+\/view$/.test(path))clearApiCache();return body;
   }
   if(!cached)return request();
   const previous=entries.get(key);if(previous&&Date.now()-previous.at<30000)return previous.value;
