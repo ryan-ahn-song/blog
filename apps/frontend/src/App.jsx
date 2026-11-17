@@ -141,6 +141,12 @@ export default function App() {
   }, []);
 
   const writerLoaded = useCallback(writer=>{setAuthor(previous=>previous?.id===writer.id?{...previous,...writer}:previous);if(!articleIdRef.current){history.replaceState(history.state,'',writerPath(writer)+location.search);lastRoute.current=location.href;}},[]);
+  function profileUpdated(account){
+    setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);
+    setAuthor(previous=>previous?.id===account.id?{...previous,name:account.name,username:account.username}:previous);
+    refreshContent();
+    if(articleIdRef.current)openArticle(articleIdRef.current,false,true);
+  }
   const markDirty = useCallback(value => setDirty(value), []);
   function navigate(next) {
     if (dirty && !window.confirm('저장하지 않은 변경 사항이 있습니다. 이동할까요?')) return false;
@@ -252,12 +258,12 @@ export default function App() {
       {topicsError && ['write','search'].includes(view) && <p className="auth-error" role="alert">분류 정보를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {view==='writers'&&catalogError&&<p className="auth-error" role="alert">필자를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {browsing.includes(view) && currentFeed.error && <p className="auth-error" role="alert">{currentFeed.error} <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
-      {view==='author'&&author&&!routeError?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='kind'?{category:null,tag:null,kind:id}:kind==='clear'?{category:null,tag:null,kind:previous.kind??'post'}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={account=>{setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);setAuthor({id:account.id,name:account.name});refreshContent();}} onShare={async writer=>{try{await navigator.clipboard.writeText(new URL(writerPath(writer),location.origin).href);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
+      {view==='author'&&author&&!routeError?<WriterPage key={author.id} id={author.id} user={user} version={version} taxonomyVersion={taxonomyVersion} filters={writerFilters} onFilter={(kind,id)=>{setWriterFilters(previous=>kind==='kind'?{category:null,tag:null,kind:id}:kind==='clear'?{category:null,tag:null,kind:previous.kind??'post'}:{...previous,[kind]:previous[kind]===id?null:id});setRequestPage(0);}} onTaxonomyChanged={()=>{setTaxonomyVersion(value=>value+1);setWriterFilters({category:null,tag:null});setRequestPage(0);}} onLoaded={writerLoaded} onLogin={()=>setAuthOpen(true)} onSubscriptionChange={()=>setSubscriptionVersion(v=>v+1)} onSaved={profileUpdated} onShare={async writer=>{try{await navigator.clipboard.writeText(new URL(writerPath(writer),location.origin).href);setMessage('프로필 링크를 복사했어요.');}catch{setMessage('프로필 링크를 복사하지 못했습니다.');}}}>{content}{currentFeed.posts.length<currentFeed.total&&<button className="pill load-more" disabled={currentFeed.loading} onClick={()=>setRequestPage(currentFeed.page+1)}>포스트 더 보기</button>}</WriterPage>:content}
       {view!=='author' && browsing.includes(view) && currentFeed.posts.length < currentFeed.total && <button className="pill load-more" disabled={currentFeed.loading} onClick={() => { setRequestPage(currentFeed.page + 1); if (currentFeed.error) setVersion(v => v + 1); }}>{currentFeed.loading ? '불러오는 중…' : '포스트 더 보기'}</button>}
     </AppShell>
-    <SettingsDialog onDeleted={accountDeleted} onRoleChanged={refreshAuth} section={settings} onClose={()=>setSettings(null)} user={user} onLogin={()=>setAuthOpen(true)}/>
+    <SettingsDialog onProfileUpdated={profileUpdated} onDeleted={accountDeleted} onRoleChanged={refreshAuth} section={settings} onClose={()=>setSettings(null)} user={user} onLogin={()=>setAuthOpen(true)}/>
     {signup&&<SignupDialog key={signup.provider} signup={signup} onComplete={account=>{setSignup(null);setUser(account);setAuthOpen(false);signedIn(account);refreshContent();}} onCancel={()=>{setSignup(null);closeAuthDialog();setMessage('가입을 취소했습니다.');}}/>}
-    {user?.needs_username&&!signup&&<UsernameSetup key={user.id} user={user} onLogout={logout} onSaved={account=>{setApiScope(account.id+':'+account.role+':'+account.version);setUser(account);refreshContent();if(articleIdRef.current)openArticle(articleIdRef.current,false,true);}}/>}
+    {user?.needs_username&&!signup&&<UsernameSetup key={user.id} user={user} onLogout={logout} onSaved={profileUpdated}/>}
     <AuthDialog onLegal={()=>{setAuthOpen(false);setSettings('legal');}} open={authOpen&&!signup} onOAuthStart={rememberLoginReturn} onClose={closeAuthDialog} user={user} checking={authChecking} connectionError={authError} refresh={refreshAuth} initialError={initialAuthError}/>
 
     <div className="toast" role="status" hidden={!message}>{message}</div>

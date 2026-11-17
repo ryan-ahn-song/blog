@@ -6,7 +6,7 @@
 - Usernames contain 2–50 characters, start with a letter, and allow Unicode letters/numbers, `_` and `-`. Whitespace, route names and the legacy `user-` namespace are reserved.
 - NFKC normalization and case folding enforce uniqueness in the API and database. The selected spelling is retained in canonical URLs.
 - Profiles use `/{username}`; posts and notices use `/{username}/posts/{postId}`. Legacy `#writer-{id}` and `#post-{id}` links remain supported by the client.
-- New members choose a username after OAuth alongside their display name and consent. Existing members choose one on their next authenticated visit. Profile editing supports availability checks and changes.
+- New members choose a username after OAuth alongside their display name and consent. Existing members choose one on their next authenticated visit. Account settings support availability checks and username changes; profile editing retains the display name, biography and images.
 - Previous usernames remain reserved for that account and redirect to its current canonical address. Account deletion cascades these aliases. Changes are rate limited and each account can retain at most 50 aliases.
 
 ## Public rendering
