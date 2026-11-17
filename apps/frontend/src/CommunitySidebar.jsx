@@ -24,7 +24,7 @@ export default function CommunitySidebar({view,user,refreshKey,onLogin}){
   const updates=subscriptions.key===user?.id?subscriptions:{writers:[],loading:true,error:''};
   const cards=listing.key===listKey?listing:{posts:[],loading:true,error:''};
   return <aside className="right-column community-sidebar">
-    <section className="trending-posts"><div className="aside-heading"><h2>{recent?'최근 읽은 포스트':'트랜딩'}</h2>{!recent&&<span className="aside-period">최근 7일 조회순</span>}</div><div className={'trending-post-list'+(recent?'':' ranked-post-list')}>
+    <section className="trending-posts"><div className="aside-heading"><h2>{recent?'최근 읽은 포스트':'트랜딩'}</h2>{!recent&&<span className="aside-period">최근 7일 조회순</span>}</div><div className={'trending-post-list divided-post-list'+(recent?'':' ranked-post-list')}>
       {recent&&!user?<p className="aside-empty">로그인하면 최근 읽은 포스트를 볼 수 있어요.</p>:cards.loading?<p className="aside-empty" role="status">불러오는 중…</p>:cards.error?<p className="aside-empty" role="alert">{recent?'최근 읽은 포스트를':'트랜딩을'} 불러오지 못했습니다. <button className="text-button" onClick={()=>setRetry(n=>n+1)}>다시 시도</button></p>:cards.posts.length?<TrendingPostCards posts={cards.posts} ranked={!recent}/>:<p className="aside-empty">{recent?'아직 읽은 포스트가 없어요.':'최근 7일간 조회된 포스트가 없어요.'}</p>}
     </div></section>
     <section className="subscription-updates"><div className="aside-heading"><h2>내가 구독한 필자</h2></div>

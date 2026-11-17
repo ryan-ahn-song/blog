@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest, clearApiCache } from './api';
+import PostDeleteConfirmation from './PostDeleteConfirmation';
 import './my-posts.css';
 const number=value=>(value??0).toLocaleString('ko-KR');
 const shortDate=value=>value.slice(5).replace('-','.');
@@ -33,6 +34,8 @@ function VisitorChart({series}){
 export default function MyPosts({user,onEdit,refreshKey,onChanged}){
   const [result,setResult]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[page,setPage]=useState(0),[days,setDays]=useState(28),[status,setStatus]=useState('all'),[query,setQuery]=useState(''),[sort,setSort]=useState('updated'),[retry,setRetry]=useState(0),[opening,setOpening]=useState(null);
   const [deleting,setDeleting]=useState(null),activeUser=useRef(user.id);activeUser.current=user.id;
+  const [deleteTarget,setDeleteTarget]=useState(null),[deleteError,setDeleteError]=useState('');
+  useEffect(()=>{setDeleteTarget(null);setDeleteError('');},[user.id]);
   useEffect(()=>{
     const controller=new AbortController();let active=true,inFlight=false;setLoading(true);setError('');
     async function load(){
@@ -47,16 +50,19 @@ export default function MyPosts({user,onEdit,refreshKey,onChanged}){
     if(opening)return;setOpening(post.id);
     try{const response=await api('/api/posts/'+post.id);onEdit(response.post);}catch(e){setError(e.message);}finally{setOpening(null);}
   }
-  async function remove(post){
-    if(deleting||opening||!window.confirm('“'+post.title+'” 포스트를 삭제할까요?\n삭제한 포스트와 조회·저장·좋아요 기록은 복구할 수 없습니다.'))return;
-    const actor=user.id;setDeleting(post.id);setError('');
+  function remove(post){if(deleting||opening)return;setDeleteError('');setDeleteTarget(post);}
+  function cancelDelete(){if(!deleting){setDeleteTarget(null);setDeleteError('');}}
+  async function confirmDelete(){
+    const post=deleteTarget;if(!post||deleting||opening)return;
+    const actor=user.id;setDeleting(post.id);setDeleteError('');setError('');
     try{
       await api('/api/posts/'+post.id,jsonRequest('DELETE',{revision:post.revision}));
       if(activeUser.current!==actor)return;
       try{localStorage.removeItem('ark-draft:'+actor+':'+post.id);}catch{}
+      setDeleteTarget(null);
       if(page>0&&current?.posts.length===1)setPage(value=>value-1);else setRetry(value=>value+1);
       onChanged?.();
-    }catch(e){if(activeUser.current===actor)setError(e.message);}finally{setDeleting(null);}
+    }catch(e){if(activeUser.current===actor)setDeleteError(e.message);}finally{setDeleting(null);}
   }
   const current=result?.owner_id===user.id?result:null,summary=current?.summary;
   const metrics=[{label:'독자 수',value:summary?.readers,unit:'명',detail:'최근 '+days+'일'},{label:'조회 수',value:summary?.views,unit:'회',detail:'최근 '+days+'일'},{label:'저장 수',value:summary?.bookmarks,unit:'건',detail:''},{label:'좋아요',value:summary?.likes,unit:'개',detail:''}];
@@ -69,5 +75,6 @@ export default function MyPosts({user,onEdit,refreshKey,onChanged}){
       {!current?<p className="dashboard-loading" role="status">{error?'포스트 목록을 불러오지 못했어요.':'포스트 목록을 불러오고 있어요.'}</p>:!current.posts.length?<div className="dashboard-posts-empty"><strong>{query.trim()?'검색한 포스트가 없어요.':status==='draft'?'저장한 초안이 없어요.':status==='published'?'업로드된 포스트가 없어요.':'아직 작성한 포스트가 없어요.'}</strong><p>{query.trim()?'다른 제목으로 검색해 보세요.':'상단의 포스트 작성에서 첫 포스트를 시작해 보세요.'}</p></div>:<div className="managed-post-list">{current.posts.map(post=><article className="managed-post" key={post.id}><div className="managed-post-main"><div className="managed-post-title"><button onClick={()=>edit(post)} disabled={Boolean(opening||deleting)}>{post.title}</button>{post.kind==='notice'&&<span className="post-kind-badge">공지</span>}<span className={'post-state '+post.status}>{post.status==='published'?'업로드됨':'초안'}</span></div>{post.summary&&<p>{post.summary}</p>}<div className="managed-post-meta"><span>{post.category==='tech'?'개발 · 기술':'일상 · 에세이'}</span><span>{date(post.updated_at)} 수정</span><button onClick={()=>edit(post)} disabled={Boolean(opening||deleting)}>{opening===post.id?'불러오는 중…':post.status==='draft'?'이어서 쓰기':'수정'}</button>{post.status==='published'&&<button data-post={post.id}>포스트 보기 ↗</button>}<button className="delete-post-button" aria-label={post.title+' 삭제'} disabled={Boolean(opening||deleting)} onClick={()=>remove(post)}>{deleting===post.id?'삭제 중…':'삭제'}</button></div></div><div className="managed-post-insights"><div className="post-stat"><span>독자</span><strong>{number(post.reader_count)}<small>명</small></strong></div><div className="post-stat"><span>저장</span><strong>{number(post.bookmark_count)}<small>명</small></strong></div><div className="post-stat"><span>좋아요</span><strong>{number(post.like_count)}</strong></div><div className="post-trend"><Sparkline values={post.daily_readers} title={post.title}/><span>최근 14일</span></div></div></article>)}</div>}
       {current&&current.total>20&&<div className="pagination"><button className="pill" disabled={!page||loading} onClick={()=>setPage(value=>value-1)}>이전</button><span>{page+1} / {Math.ceil(current.total/20)} · {number(current.total)}개의 포스트</span><button className="pill" disabled={(page+1)*20>=current.total||loading} onClick={()=>setPage(value=>value+1)}>다음</button></div>}
     </section>
+    <PostDeleteConfirmation post={deleteTarget} pending={Boolean(deleting)} error={deleteError} onCancel={cancelDelete} onConfirm={confirmDelete}/>
   </section>;
 }
