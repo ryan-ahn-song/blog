@@ -60,15 +60,13 @@ export default function App() {
   function signedIn(account) {
     setApiScope(account.id+':'+account.role+':'+account.version);
     announceAuthChange();
-    setEditing(null); setDirty(false);
-    let returnPost=null;try{const saved=JSON.parse(sessionStorage.getItem('ark-auth-return-post'));sessionStorage.removeItem('ark-auth-return-post');if(saved&&typeof saved.id==='string'&&typeof saved.at==='number'&&/^[\w-]{1,100}$/.test(saved.id)&&Date.now()-saved.at>=0&&Date.now()-saved.at<1800000)returnPost=saved.id;}catch{}
-    let returnPage=null;try{const saved=JSON.parse(sessionStorage.getItem('ark-auth-return-page'));sessionStorage.removeItem('ark-auth-return-page');if(saved&&typeof saved.path==='string'&&saved.path.length<2000&&Date.now()-saved.at>=0&&Date.now()-saved.at<1800000){const url=new URL(saved.path,location.origin);if(url.origin===location.origin&&['view','writer'].includes(pageRoute(url.pathname).type))returnPage=url.pathname+url.search;}}catch{}
-    if(returnPost){setView('home');setAuthor(null);openArticle(returnPost);setMessage('로그인했습니다.');return;}
-    if(returnPage){history.replaceState(null,'',returnPage);lastRoute.current=null;window.dispatchEvent(new PopStateEvent('popstate'));setMessage('로그인했습니다.');return;}
-    const next=['author','admin'].includes(account.role)?'write':'home';history.replaceState(null,'',viewPath(next));lastRoute.current=location.href;setView(next);setEditId(null);
-    setMessage(['author', 'admin'].includes(account.role) ? '로그인했습니다. 새로운 포스트를 써 보세요.' : '로그인했습니다. 반가워요!');
+    try{sessionStorage.removeItem('ark-auth-return-post');sessionStorage.removeItem('ark-auth-return-page');}catch{}
+    routeRequest.current++;clearArticle();articleReturn.current=null;readerFocus.current=null;readerScroll.current=0;
+    setEditing(null);setDirty(false);setEditId(null);setEditError('');setEditLoading(false);setRouteError('');
+    setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');setWriterFilters({category:null,tag:null});setRequestPage(0);
+    history.replaceState(null,'',viewPath('home'));lastRoute.current=location.href;
+    setMessage('로그인했습니다. 반가워요!');
   }
-  function rememberLoginReturn(){try{if(articleIdRef.current)sessionStorage.setItem('ark-auth-return-post',JSON.stringify({id:articleIdRef.current,at:Date.now()}));else if(!initialAuthError){sessionStorage.removeItem('ark-auth-return-post');const route=pageRoute(location.pathname);if(['view','writer'].includes(route.type))sessionStorage.setItem('ark-auth-return-page',JSON.stringify({path:location.pathname+location.search,at:Date.now()}));}}catch{}}
   function closeAuthDialog(){setAuthOpen(false);try{sessionStorage.removeItem('ark-auth-return-post');sessionStorage.removeItem('ark-auth-return-page');}catch{}}
   const authRequest=useRef(0),authController=useRef(null),lastAuthCheck=useRef(0);
   async function refreshAuth() {
@@ -305,7 +303,7 @@ export default function App() {
     <SettingsDialog onProfileUpdated={profileUpdated} onDeleted={accountDeleted} onRoleChanged={refreshAuth} section={settings} onClose={()=>setSettings(null)} user={user} onLogin={()=>setAuthOpen(true)}/>
     {signup&&<SignupDialog key={signup.provider} signup={signup} onComplete={account=>{setSignup(null);setUser(account);setAuthOpen(false);signedIn(account);refreshContent();}} onCancel={()=>{setSignup(null);closeAuthDialog();setMessage('가입을 취소했습니다.');}}/>}
     {user?.needs_username&&!signup&&<UsernameSetup key={user.id} user={user} onLogout={logout} onSaved={profileUpdated}/>}
-    <AuthDialog onLegal={()=>{setAuthOpen(false);setSettings('legal');}} open={authOpen&&!signup} onOAuthStart={rememberLoginReturn} onClose={closeAuthDialog} user={user} checking={authChecking} connectionError={authError} refresh={refreshAuth} initialError={initialAuthError}/>
+    <AuthDialog onLegal={()=>{setAuthOpen(false);setSettings('legal');}} open={authOpen&&!signup} onClose={closeAuthDialog} user={user} checking={authChecking} connectionError={authError} refresh={refreshAuth} initialError={initialAuthError}/>
 
     <div className="toast" role="status" hidden={!message}>{message}</div>
   </>;
