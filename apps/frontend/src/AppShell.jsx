@@ -22,7 +22,7 @@ return <div onClick={onAction}>
         </div>
       </>}
     </nav>
-    <MoreMenu user={user} onSettings={onSettings} onLogin={onLogin} onAdmin={onAdmin} onLogout={onLogout} loggingOut={loggingOut}/>
+    <MoreMenu authChecking={authChecking} user={user} onSettings={onSettings} onLogin={onLogin} onAdmin={onAdmin} onLogout={onLogout} loggingOut={loggingOut}/>
     <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={!user&&authError?onAuthRetry:onProfile} disabled={authChecking&&!user} aria-busy={authChecking&&!user} aria-label={user?'내 프로필':authChecking?'로그인 상태 확인 중':authError?'로그인 상태 다시 확인':'로그인'} title={user?user.name:authChecking?'로그인 상태 확인 중':authError?'로그인 상태 다시 확인':'로그인'}>{user?<span>{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
   </aside>
   <main className={`surface ${!reading&&view === "search" ? "exploring" : ""} ${!reading&&['write','my-posts','admin'].includes(view) ? 'workspace' : ''} ${!reading&&view === 'author' ? 'author-view' : ''} ${!reading&&view === 'write' ? 'writing-workspace' : ''} ${reading?'reading-view':''}`} id="main" ref={surfaceRef}>
@@ -32,7 +32,7 @@ return <div onClick={onAction}>
       <section className="search-panel" hidden={reading||view !== "search"} aria-label="검색 및 주제 탐색"><div className="explore-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><label className="sr-only" htmlFor="search">필자 또는 주제 검색</label><input type="search" id="search" placeholder="필자 또는 주제 검색" autoComplete="off" value={query} onChange={onSearch} ref={searchRef}/><button id="clear-search" aria-label="검색어 지우기" hidden={!query}>×</button></div><div className="explore-chips" role="group" aria-label="주제 선택">{chips}</div></section>
       <div className="content-columns" hidden={reading}>
         <section id="feed" tabIndex={-1} aria-label="최신 포스트 피드" aria-live="polite">{children}</section>
-        {!reading&&['home','search','saved','subscriptions','writers'].includes(view)&&<CommunitySidebar view={view} user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>}
+        {!reading&&['home','search','saved','subscriptions','writers'].includes(view)&&<CommunitySidebar authChecking={authChecking} view={view} user={user} refreshKey={sidebarRefresh} onLogin={onLogin}/>}
       </div>
     </div>
   </main>
