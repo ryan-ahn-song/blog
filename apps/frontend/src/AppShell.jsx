@@ -2,7 +2,7 @@ import { assetUrl } from './assets.js';
 import CommunitySidebar from './CommunitySidebar';
 import MoreMenu from './MoreMenu';
 import {viewPath} from '../../../shared/paths';
-export default function AppShell({view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,children,user,onProfile,sidebarRefresh,onLogin,onSettings,onLogout,loggingOut,onAdmin,reading,reader,onBack}) {
+export default function AppShell({authChecking,authError,onAuthRetry,view,title,query,category,onSearch,onAction,searchRef,surfaceRef,chips,children,user,onProfile,sidebarRefresh,onLogin,onSettings,onLogout,loggingOut,onAdmin,reading,reader,onBack}) {
 return <div onClick={onAction}>
   <a className="skip" href={reading?'#article-reader':'#feed'} onClick={event=>{event.preventDefault();const target=document.getElementById(reading?'article-reader':'feed');target?.focus({preventScroll:true});target?.scrollIntoView();}}>{reading?'본문으로 건너뛰기':'최신 포스트로 건너뛰기'}</a>
   <aside className="rail" aria-label="사이드 메뉴">
@@ -23,7 +23,7 @@ return <div onClick={onAction}>
       </>}
     </nav>
     <MoreMenu user={user} onSettings={onSettings} onLogin={onLogin} onAdmin={onAdmin} onLogout={onLogout} loggingOut={loggingOut}/>
-    <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={onProfile} aria-label={user?'내 프로필':'로그인'} title={user?user.name:'로그인'}>{user?<span>{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
+    <button className={`rail-button rail-profile ${user?'signed-in':''}`} onClick={!user&&authError?onAuthRetry:onProfile} disabled={authChecking&&!user} aria-busy={authChecking&&!user} aria-label={user?'내 프로필':authChecking?'로그인 상태 확인 중':authError?'로그인 상태 다시 확인':'로그인'} title={user?user.name:authChecking?'로그인 상태 확인 중':authError?'로그인 상태 다시 확인':'로그인'}>{user?<span>{user.avatar_url?<img src={user.avatar_url} alt=""/>:Array.from(user.name)[0]}</span>:<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>}</button>
   </aside>
   <main className={`surface ${!reading&&view === "search" ? "exploring" : ""} ${!reading&&['write','my-posts','admin'].includes(view) ? 'workspace' : ''} ${!reading&&view === 'author' ? 'author-view' : ''} ${!reading&&view === 'write' ? 'writing-workspace' : ''} ${reading?'reading-view':''}`} id="main" ref={surfaceRef}>
     <div className="layout">

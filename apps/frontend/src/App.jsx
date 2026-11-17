@@ -14,11 +14,13 @@ import {pageRoute,writerPath,postPath,viewPath,viewUrl} from '../../../shared/pa
 import {setPageMetadata} from './page-metadata';
 import { PostCard, WriterList, EmptyState, Explore, topicName } from './ContentViews';
 import { api, jsonRequest, setApiScope, clearApiCache } from './api';
+import {restoreAccount} from './auth-state';
 
 const oauthErrors = { state: '로그인 요청이 만료되었습니다. 다시 시작해 주세요.', cancelled: '로그인을 취소했습니다.', google: 'Google 로그인에 실패했습니다. 다시 시도해 주세요.', github: 'GitHub 로그인에 실패했습니다. 다시 시도해 주세요.', github_email: 'GitHub에서 기본 이메일 인증을 마친 뒤 다시 로그인해 주세요.', existing: '이미 가입된 이메일입니다. 기존에 연결한 서비스로 로그인한 후, 계정 및 설정에서 다른 로그인 계정을 연결해 주세요.', link: '현재 계정과 인증된 기본 이메일이 같은 계정을 선택해 주세요.', disabled: '이용이 중지된 계정입니다. 관리자에게 문의해 주세요.' };
 const emptyFeed = { key: '', posts: [], total: 0, page: 0, loading: true, error: '' };
 const browsing = ['home', 'search', 'saved', 'author', 'subscriptions'];
 const restrictedViews=['write','my-posts','admin'];
+function announceAuthChange(){try{localStorage.setItem('ark-auth-change',Date.now()+':'+Math.random());}catch{}}
 function menuState(view,search){const p=new URLSearchParams(search);return {query:view==='search'?(p.get('q')??'').slice(0,100):'',category:['home','search'].includes(view)&&['tech','life'].includes(p.get('category'))?p.get('category'):'all',topicId:view==='search'&&/^[\w-]{1,100}$/.test(p.get('topic')??'')?p.get('topic'):'all',editId:view==='write'&&/^[\w-]{1,100}$/.test(p.get('post')??'')?p.get('post'):null};}
 
 export default function App() {
@@ -57,6 +59,7 @@ export default function App() {
 
   function signedIn(account) {
     setApiScope(account.id+':'+account.role+':'+account.version);
+    announceAuthChange();
     setEditing(null); setDirty(false);
     let returnPost=null;try{const saved=JSON.parse(sessionStorage.getItem('ark-auth-return-post'));sessionStorage.removeItem('ark-auth-return-post');if(saved&&typeof saved.id==='string'&&typeof saved.at==='number'&&/^[\w-]{1,100}$/.test(saved.id)&&Date.now()-saved.at>=0&&Date.now()-saved.at<1800000)returnPost=saved.id;}catch{}
     let returnPage=null;try{const saved=JSON.parse(sessionStorage.getItem('ark-auth-return-page'));sessionStorage.removeItem('ark-auth-return-page');if(saved&&typeof saved.path==='string'&&saved.path.length<2000&&Date.now()-saved.at>=0&&Date.now()-saved.at<1800000){const url=new URL(saved.path,location.origin);if(url.origin===location.origin&&['view','writer'].includes(pageRoute(url.pathname).type))returnPage=url.pathname+url.search;}}catch{}
@@ -67,18 +70,28 @@ export default function App() {
   }
   function rememberLoginReturn(){try{if(articleIdRef.current)sessionStorage.setItem('ark-auth-return-post',JSON.stringify({id:articleIdRef.current,at:Date.now()}));else if(!initialAuthError){sessionStorage.removeItem('ark-auth-return-post');const route=pageRoute(location.pathname);if(['view','writer'].includes(route.type))sessionStorage.setItem('ark-auth-return-page',JSON.stringify({path:location.pathname+location.search,at:Date.now()}));}}catch{}}
   function closeAuthDialog(){setAuthOpen(false);try{sessionStorage.removeItem('ark-auth-return-post');sessionStorage.removeItem('ark-auth-return-page');}catch{}}
-  const authRequest=useRef(0);
+  const authRequest=useRef(0),authController=useRef(null),lastAuthCheck=useRef(0);
   async function refreshAuth() {
     const sequence=++authRequest.current;
+    authController.current?.abort();const controller=new AbortController();authController.current=controller;lastAuthCheck.current=Date.now();
     setAuthChecking(true); setAuthError(false);
-    try { const body = await api('/api/auth/me'); if(sequence!==authRequest.current)return; setApiScope(body.user?body.user.id+':'+body.user.role+':'+body.user.version:'anonymous'); setUser(body.user); if(params.get('auth')==='reauth'&&body.user)setSettings('account'); setSignup(body.signup??null); if(body.signup)setAuthOpen(false); else if(params.get('auth')==='signup'&&!body.user){setAuthOpen(true);setMessage('가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');} if (loginReturn.current && body.user) { loginReturn.current = false; signedIn(body.user); } }
-    catch { if(sequence===authRequest.current)setAuthError(true); } finally { if(sequence===authRequest.current)setAuthChecking(false); }
+    try { const body = await restoreAccount(controller.signal); if(sequence!==authRequest.current)return; setApiScope(body.user?body.user.id+':'+body.user.role+':'+body.user.version:'anonymous'); setUser(body.user); if(params.get('auth')==='reauth'&&body.user)setSettings('account'); setSignup(body.signup??null); if(body.signup)setAuthOpen(false); else if(params.get('auth')==='signup'&&!body.user){setAuthOpen(true);setMessage('가입 인증이 만료되었습니다. 소셜 로그인을 다시 시작해 주세요.');} if (loginReturn.current && body.user) { loginReturn.current = false; signedIn(body.user); }return body.user; }
+    catch { if(sequence===authRequest.current&&!controller.signal.aborted)setAuthError(true); } finally { if(sequence===authRequest.current)setAuthChecking(false);if(authController.current===controller)authController.current=null; }
   }
-  useEffect(()=>{let refreshing=false;const expired=()=>{if(refreshing)return;refreshing=true;setAuthOpen(true);setMessage('로그인이 만료되었습니다. 다시 로그인해 주세요.');refreshAuth().finally(()=>{refreshing=false;});};window.addEventListener('ark-auth-expired',expired);return()=>window.removeEventListener('ark-auth-expired',expired);},[]);
+  useEffect(()=>{let refreshing=false;const expired=()=>{if(refreshing)return;refreshing=true;refreshAuth().then(account=>{if(account===null){setAuthOpen(true);setMessage('로그인이 만료되었습니다. 다시 로그인해 주세요.');}}).finally(()=>{refreshing=false;});};window.addEventListener('ark-auth-expired',expired);return()=>window.removeEventListener('ark-auth-expired',expired);},[]);
   useEffect(() => {
     refreshAuth();
     if (params.has('auth') || params.has('auth_error')) { const url = new URL(location.href); url.searchParams.delete('auth'); url.searchParams.delete('auth_error'); history.replaceState(null, '', url.href); }
+    return()=>{authRequest.current++;authController.current?.abort();};
   }, []);
+  useEffect(()=>{
+    const resume=event=>{if(document.visibilityState==='hidden'||navigator.onLine===false||authController.current)return;if(event?.type==='online'||Date.now()-lastAuthCheck.current>=300000)refreshAuth();};
+    const changed=event=>{if(event.key==='ark-auth-change')refreshAuth();};
+    window.addEventListener('focus',resume);window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);
+    window.addEventListener('storage',changed);
+    const timer=setInterval(()=>{if(user)resume();},6*3600000);
+    return()=>{window.removeEventListener('focus',resume);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume);window.removeEventListener('storage',changed);clearInterval(timer);};
+  },[user?.id]);
   useEffect(() => {
     const controller=new AbortController();setTopicsError('');
     api('/api/topics',{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setTopics(result.topics);}).catch(error=>{if(!controller.signal.aborted&&error.name!=='AbortError')setTopicsError(error.message);});
@@ -195,12 +208,12 @@ export default function App() {
   async function logout(){
     if(loggingOut)return;
     if(dirty&&!window.confirm('저장하지 않은 변경 사항이 있습니다. 로그아웃할까요?'))return;
-    authRequest.current++;routeRequest.current++;setLoggingOut(true);
-    try{await api('/api/auth/logout',jsonRequest('POST',{}));clearDraftBackups(user?.id);setApiScope('anonymous');feedCache.current.clear();setAuthChecking(false);setUser(null);setDirty(false);setEditing(null);setEditId(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',viewPath('home'));lastRoute.current=location.href;refreshContent();setMessage('로그아웃했습니다.');}
+    authRequest.current++;authController.current?.abort();setAuthChecking(false);routeRequest.current++;setLoggingOut(true);
+    try{await api('/api/auth/logout',jsonRequest('POST',{}));clearDraftBackups(user?.id);announceAuthChange();setApiScope('anonymous');feedCache.current.clear();setAuthChecking(false);setUser(null);setDirty(false);setEditing(null);setEditId(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',viewPath('home'));lastRoute.current=location.href;refreshContent();setMessage('로그아웃했습니다.');}
     catch(e){setMessage(e.message);}finally{setLoggingOut(false);}
   }
   function clearDraftBackups(id){try{for(const key of Object.keys(localStorage))if(key.startsWith('ark-draft:'+id+':'))localStorage.removeItem(key);}catch{}}
-  function accountDeleted(id){authRequest.current++;routeRequest.current++;setApiScope('anonymous');feedCache.current.clear();
+  function accountDeleted(id){announceAuthChange();authRequest.current++;authController.current?.abort();routeRequest.current++;setApiScope('anonymous');feedCache.current.clear();
     try{for(const key of Object.keys(localStorage))if(key.startsWith('ark-draft:'+id+':'))localStorage.removeItem(key);sessionStorage.removeItem('ark-auth-return-post');}catch{}
     setAuthChecking(false);setUser(null);setSignup(null);setDirty(false);setEditing(null);setEditId(null);setSettings(null);setAuthOpen(false);setView('home');setAuthor(null);setCategory('all');setQuery('');setTopicId('all');clearArticle();history.replaceState(null,'',viewPath('home'));lastRoute.current=location.href;refreshContent();setMessage('계정을 삭제했습니다.');
   }
@@ -266,6 +279,7 @@ export default function App() {
   let content;
   if(routeError)content=<EmptyState title={routeError} action="홈으로" onAction={()=>navigate('home')}/>;
   else if(view==='author'&&!author)content=<p role="status">필자 프로필을 불러오고 있어요.</p>;
+  else if(authError&&!user&&[...restrictedViews,'saved','subscriptions'].includes(view))content=<EmptyState title="로그인 상태를 확인하지 못했습니다." action="다시 확인" onAction={refreshAuth}>연결 상태를 확인한 뒤 다시 시도해 주세요.</EmptyState>;
   else if(restrictedViews.includes(view)&&authChecking&&!user)content=<p role="status">로그인 상태를 확인하고 있어요.</p>;
   else if(restrictedViews.includes(view)&&(!canWrite||(view==='admin'&&user?.role!=='admin')))content=<EmptyState title={!user?'로그인이 필요합니다.':view==='admin'?'관리자만 볼 수 있는 페이지입니다.':'작성자 권한이 필요합니다.'} action={!user?'로그인':undefined} onAction={()=>setAuthOpen(true)}/>;
   else if(view==='write'&&canWrite&&editId&&(editLoading||editing?.id!==editId))content=editError?<EmptyState title={editError} action="다시 시도" onAction={()=>setVersion(value=>value+1)}/>:<p role="status">편집할 포스트를 불러오고 있어요.</p>;
@@ -281,7 +295,7 @@ export default function App() {
   else if (!currentFeed.error) content = <EmptyState title={view==='author'&&writerFilters.kind==='notice'?'아직 업로드된 공지가 없어요.':view==='subscriptions'?'구독한 필자의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && !(view==='author'&&writerFilters.kind==='notice') && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>필자 페이지에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">필자 둘러보기</button></>:view==='author'&&writerFilters.kind==='notice'?(canStartPost?'상단의 포스트 작성에서 게시 종류를 공지로 선택해 보세요.':'새로운 공지가 올라오면 이곳에서 읽을 수 있어요.'):view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
 
   return <>
-    <AppShell reading={Boolean(articleId)} onBack={returnFromArticle} reader={<ArticlePage post={article} loading={articleLoading} error={articleError} topics={topics} user={user} pending={pending} onRetry={()=>openArticle(articleId,false)} onEdit={editPost} onLogin={()=>{setAuthOpen(true);refreshAuth();}}/>} view={view} title={title} query={query} category={category} onSearch={e => { setQuery(e.target.value); setRequestPage(0); }} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} onSettings={setSettings} onLogout={logout} loggingOut={loggingOut} onAdmin={()=>navigate('admin')} sidebarRefresh={version+':'+subscriptionVersion} onLogin={()=>setAuthOpen(true)} user={user} onProfile={() => { if(user)openWriter(user.id,user.name);else{setAuthOpen(true);refreshAuth();} }}>
+    <AppShell authChecking={authChecking} authError={authError} onAuthRetry={refreshAuth} reading={Boolean(articleId)} onBack={returnFromArticle} reader={<ArticlePage post={article} loading={articleLoading} error={articleError} topics={topics} user={user} pending={pending} onRetry={()=>openArticle(articleId,false)} onEdit={editPost} onLogin={()=>{setAuthOpen(true);refreshAuth();}}/>} view={view} title={title} query={query} category={category} onSearch={e => { setQuery(e.target.value); setRequestPage(0); }} onAction={onAction} searchRef={searchRef} surfaceRef={surfaceRef} chips={chips} onSettings={setSettings} onLogout={logout} loggingOut={loggingOut} onAdmin={()=>navigate('admin')} sidebarRefresh={version+':'+subscriptionVersion} onLogin={()=>setAuthOpen(true)} user={user} onProfile={() => { if(user)openWriter(user.id,user.name);else{setAuthOpen(true);refreshAuth();} }}>
       {topicsError && ['write','search'].includes(view) && <p className="auth-error" role="alert">분류 정보를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {view==='writers'&&catalogError&&<p className="auth-error" role="alert">필자를 불러오지 못했습니다. <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}
       {browsing.includes(view) && currentFeed.error && <p className="auth-error" role="alert">{currentFeed.error} <button className="text-button" onClick={refreshContent}>다시 시도</button></p>}

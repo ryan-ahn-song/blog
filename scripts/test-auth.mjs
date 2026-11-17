@@ -23,7 +23,23 @@ try {
   assert.equal((await call('github')).status,503);
   const token=randomBytes(32).toString('hex'),cookie='__Host-ark_session='+token;
   await db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(createHash('sha256').update(token).digest('hex'),'test-user',Math.floor(Date.now()/1000)+3600).run();
-  const account=await (await call('me',undefined,cookie)).json();assert.equal(account.user.id,'test-user');assert.equal(account.user.password_hash,undefined);
+  const restored=await call('me',undefined,cookie),account=await restored.json();assert.equal(account.user.id,'test-user');assert.equal(account.user.password_hash,undefined);
+  assert.match(restored.headers.get('set-cookie'),/Max-Age=2592000/);assert.match(restored.headers.get('set-cookie'),/HttpOnly/);assert.match(restored.headers.get('set-cookie'),/Secure/);assert.match(restored.headers.get('set-cookie'),/SameSite=Lax/);assert(!restored.headers.get('set-cookie').includes('Domain='));
+  const sessionNow=Math.floor(Date.now()/1000),day=86400;
+  for(const role of ['reader','author','admin']){
+    await db.prepare('UPDATE auth_users SET role=? WHERE id=?').bind(role,'test-user').run();
+    await db.prepare('UPDATE auth_sessions SET created_at=?,last_seen=?,expires_at=?,authenticated_at=? WHERE user_id=?').bind(sessionNow-2*day,sessionNow-2*day,sessionNow+day,sessionNow-600,'test-user').run();
+    for(let reload=0;reload<2;reload++){const result=await call('me',undefined,cookie);assert.equal((await result.json()).user.id,'test-user',role+' survives inactivity, refresh and a reopened tab');assert.match(result.headers.get('set-cookie'),/Max-Age=2592000/);}
+    const row=await db.prepare('SELECT created_at,expires_at,authenticated_at FROM auth_sessions WHERE user_id=?').bind('test-user').first();assert.equal(row.created_at,sessionNow-2*day,'Renewal never resets the absolute lifetime');assert(row.expires_at>=sessionNow+30*day);assert.equal(row.authenticated_at,sessionNow-600,'Restoring a login does not grant recent OAuth proof');
+  }
+  await db.prepare("UPDATE auth_users SET role='author' WHERE id='test-user'").run();
+  await db.prepare("UPDATE auth_sessions SET created_at=?,last_seen=?,expires_at=? WHERE user_id='test-user'").bind(sessionNow-89*day,sessionNow,sessionNow+600).run();
+  const capped=await call('me',undefined,cookie);assert.equal((await capped.json()).user.id,'test-user');assert(Number(capped.headers.get('set-cookie').match(/Max-Age=(\d+)/)[1])<=day,'Renewed cookie cannot exceed the 90-day absolute limit');assert.equal((await db.prepare("SELECT expires_at FROM auth_sessions WHERE user_id='test-user'").first()).expires_at,sessionNow+day);
+  for(const [created,seen,expires]of [[sessionNow-32*day,sessionNow-31*day,sessionNow+day],[sessionNow-91*day,sessionNow,sessionNow+day],[sessionNow,sessionNow,sessionNow-1]]){
+    await db.prepare("UPDATE auth_sessions SET created_at=?,last_seen=?,expires_at=? WHERE user_id='test-user'").bind(created,seen,expires).run();
+    const invalid=await call('me',undefined,cookie);assert.equal((await invalid.json()).user,null);assert.match(invalid.headers.get('set-cookie'),/Max-Age=0/);assert.equal((await db.prepare("SELECT expires_at FROM auth_sessions WHERE user_id='test-user'").first()).expires_at,expires,'Expired sessions are never renewed');
+  }
+  await db.prepare("UPDATE auth_sessions SET created_at=?,last_seen=?,expires_at=? WHERE user_id='test-user'").bind(sessionNow,sessionNow,sessionNow+day).run();
   assert.equal((await call('account')).status,401);
   assert.equal((await call('logout',{},cookie,'https://attacker.invalid')).status,403);
   assert.equal((await (await call('me',undefined,cookie)).json()).user.id,'test-user','CSRF failure preserves the session');
@@ -47,6 +63,7 @@ try {
   const consents=(await db.prepare('SELECT * FROM auth_consents WHERE user_id=? ORDER BY document').bind(joined.id).all()).results;assert.deepEqual(consents.map(row=>row.document),['privacy','terms']);assert.ok(consents.every(row=>row.version===legal.version&&row.accepted_at>=time));
   assert.equal((await call('signup',good,pending)).status,401,'Signup ticket is single use');
   const loginCookie=completed.headers.get('set-cookie').match(/__Host-ark_session=[a-f0-9]{64}/)[0];assert.equal((await (await call('me',undefined,loginCookie)).json()).user.id,joined.id);
+  assert.match(completed.headers.get('set-cookie'),/Max-Age=2592000/,'New OAuth signup issues a persistent 30-day login');
   const expired=await ticket('expired',0);assert.equal((await call('signup',good,expired)).status,401);
   const cancel=await ticket('cancelled');const cancelled=await mf.dispatchFetch('https://21stark.dev/api/auth/signup',{method:'DELETE',headers:{Origin:'https://21stark.dev',Cookie:cancel}});assert.equal(cancelled.status,200);assert.equal((await call('signup',good,cancel)).status,401);
   const concurrent=await ticket('concurrent');const pair=await Promise.all([call('signup',{...good,username:'Concurrent'},concurrent),call('signup',{...good,username:'Concurrent'},concurrent)]);assert.deepEqual(pair.map(r=>r.status).sort(),[201,401]);

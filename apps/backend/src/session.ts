@@ -6,6 +6,7 @@ export type UserRow = { id: string; email: string; name: string; username:string
 export type AuthEnv = { DB: D1Database; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string; AUTH_ORIGINS?: string; BOOTSTRAP_ADMIN_EMAIL?: string };
 export const now = () => Math.floor(Date.now() / 1000);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+const SESSION_IDLE_SECONDS=30*86400,SESSION_ABSOLUTE_SECONDS=90*86400;
 export function local(request: Request) { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(request.url).hostname); }
 function cookieName(request: Request, suffix: string) { return (local(request) ? 'ark_' : '__Host-ark_') + suffix; }
 export function readCookie(request: Request, suffix: string) {
@@ -15,20 +16,25 @@ export function cookie(request: Request, suffix: string, value: string, age: num
   return cookieName(request, suffix) + '=' + value + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + age + (local(request) ? '' : '; Secure');
 }
 export function publicUser(user: UserRow, request:Request, env:{MEDIA_BASE_URL?:string}) { return { id: user.id, email: user.email, name: user.name, username:user.username||'user-'+user.id,needs_username:!user.username_confirmed, bio: user.bio, role: user.role, version: user.version,avatar_key:user.avatar_key,cover_key:user.cover_key,avatar_url:mediaUrl(user.avatar_key,request,env),cover_url:mediaUrl(user.cover_key,request,env) }; }
-export async function currentUser(request: Request, env: AuthEnv): Promise<UserRow | null> {
+async function sessionState(request:Request,env:AuthEnv,renew=false):Promise<{user:UserRow;setCookie?:string}|null>{
   const token = readCookie(request, 'session');
   if (!/^[a-f0-9]{64}$/.test(token)) return null;
   const time=now(),hash=digest(token);
   const seen="CASE WHEN s.last_seen=0 THEN s.created_at ELSE s.last_seen END";
-  const user=await env.DB.prepare('SELECT u.*, '+seen+' AS session_seen FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND s.login_version=u.login_version AND '+seen+'>?-CASE u.role WHEN \'admin\' THEN 1800 WHEN \'author\' THEN 3600 ELSE 14400 END AND s.created_at>?-CASE u.role WHEN \'admin\' THEN 28800 WHEN \'author\' THEN 86400 ELSE 604800 END').bind(hash,time,time,time).first<UserRow&{session_seen:number}>();
+  const user=await env.DB.prepare('SELECT u.*, '+seen+' AS session_seen FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND s.login_version=u.login_version AND '+seen+'>? AND s.created_at>?').bind(hash,time,time-SESSION_IDLE_SECONDS,time-SESSION_ABSOLUTE_SECONDS).first<UserRow&{session_seen:number}>();
   if(!user)return null;
-  // Throttle activity writes to once per five minutes, rather than every API request.
-  if(time-user.session_seen>=300){
-    const updated=await env.DB.prepare('UPDATE auth_sessions SET last_seen=? WHERE token_hash=? AND login_version=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND login_version=?) RETURNING user_id').bind(time,hash,user.login_version,user.id,user.login_version).first();
+  let setCookie:string|undefined;
+  // Restore refreshes both the server expiry and persistent cookie. Other API
+  // requests throttle activity writes and never issue new authentication proof.
+  if(renew||time-user.session_seen>=300){
+    const updated=await env.DB.prepare('UPDATE auth_sessions SET last_seen=max(last_seen,?),expires_at=CASE WHEN ? THEN min(created_at+?,max(expires_at,?)) ELSE expires_at END WHERE token_hash=? AND user_id=? AND login_version=? AND expires_at>? AND created_at>? AND (CASE WHEN last_seen=0 THEN created_at ELSE last_seen END)>? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND login_version=?) RETURNING expires_at').bind(time,renew?1:0,SESSION_ABSOLUTE_SECONDS,time+SESSION_IDLE_SECONDS,hash,user.id,user.login_version,time,time-SESSION_ABSOLUTE_SECONDS,time-SESSION_IDLE_SECONDS,user.id,user.login_version).first<{expires_at:number}>();
     if(!updated)return null;
+    if(renew)setCookie=cookie(request,'session',token,Math.min(SESSION_IDLE_SECONDS,updated.expires_at-time));
   }
-  const {session_seen,...account}=user;return account;
+  const {session_seen,...account}=user;return {user:account,setCookie};
 }
+export async function currentUser(request:Request,env:AuthEnv):Promise<UserRow|null>{return (await sessionState(request,env))?.user??null;}
+export async function restoreSession(request:Request,env:AuthEnv){return sessionState(request,env,true);}
 export async function requireUser(request: Request, env: AuthEnv, roles: Role[] = ['reader', 'author', 'admin']) {
   const user = await currentUser(request, env);
   if (!user) throw new HttpError(401, '로그인이 필요합니다.');
@@ -44,10 +50,10 @@ export async function createSession(request: Request, env: AuthEnv, userId: stri
   const result=await env.DB.batch([
     env.DB.prepare('DELETE FROM auth_pending_signups WHERE token_hash=?').bind(digest(readCookie(request, 'signup'))),
     env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at<=? OR (token_hash=? AND EXISTS(SELECT 1 FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?)))').bind(now(),digest(readCookie(request,'session')),userId,loginVersion??null,loginVersion??null),
-    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,login_version,authenticated_at,last_seen) SELECT ?,id,?,login_version,unixepoch(),unixepoch() FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?) RETURNING user_id').bind(digest(token),now()+604800,userId,loginVersion??null,loginVersion??null),
+    env.DB.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,login_version,authenticated_at,last_seen) SELECT ?,id,?,login_version,unixepoch(),unixepoch() FROM auth_users WHERE id=? AND disabled=0 AND (? IS NULL OR login_version=?) RETURNING user_id').bind(digest(token),now()+SESSION_IDLE_SECONDS,userId,loginVersion??null,loginVersion??null),
   ]);
   if(!result[2].results.length)throw new HttpError(401,'로그인 계정이 변경되었습니다. 다시 로그인해 주세요.');
-  return cookie(request, 'session', token, 604800);
+  return cookie(request, 'session', token, SESSION_IDLE_SECONDS);
 }
 export async function limited(db: D1Database, key: string, max: number) {
   const time = now();

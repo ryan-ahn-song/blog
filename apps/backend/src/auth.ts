@@ -7,7 +7,7 @@ import { handleGoogle } from './google';
 import { handleGitHub } from './github';
 import { profileImageKey } from './media';
 import {checkUsername,requiredUsername,availableUsername} from './usernames';
-import { type AuthEnv, type UserRow, currentUser, requireUser, publicUser, checkOrigin, readCookie, cookie, digest,limited } from './session';
+import { type AuthEnv, type UserRow, restoreSession, requireUser, publicUser, checkOrigin, readCookie, cookie, digest,limited } from './session';
 export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucket;MEDIA_BASE_URL?:string}): Promise<Response> {
   const path = new URL(request.url).pathname;
   if (path === '/api/auth/google' || path === '/api/auth/callback/google') return handleGoogle(request, env);
@@ -17,9 +17,9 @@ export async function handleAuth(request: Request, env: AuthEnv & {MEDIA:R2Bucke
   if(path==='/api/auth/legal'&&request.method==='GET')return json(legal);
   if (request.method === 'GET' && path === '/api/auth/providers') return json({ google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),github:Boolean(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET) });
   if (request.method === 'GET' && path === '/api/auth/me') {
-    const user = await currentUser(request, env);
+    const restored=await restoreSession(request,env),user=restored?.user;
     const pending=user?null:await pendingSignup(request,env);
-    return json({ user: user ? publicUser(user,request,env) : null, ...(pending?{signup:{name:pending.suggested_name,provider:pending.provider}}:{}) }, 200, user ? {} : { 'Set-Cookie': cookie(request, 'session', '', 0) });
+    return json({ user: user ? publicUser(user,request,env) : null, ...(pending?{signup:{name:pending.suggested_name,provider:pending.provider}}:{}) }, 200, { 'Set-Cookie': restored?.setCookie??cookie(request, 'session', '', 0) });
   }
   if(path==='/api/auth/account'||/^\/api\/auth\/connections\/(google|github)$/.test(path))return handleAccount(request,env);
   if (path === '/api/auth/profile') {
