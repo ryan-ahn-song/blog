@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AppShell from './AppShell';
-import FeedAd,{isFeedAdPosition} from './FeedAd';
+import FeedAd,{isHomeAdPosition} from './FeedAd';
 import LoadingSkeleton from './LoadingSkeleton';
 import AuthDialog from './AuthDialog';
 import SignupDialog from './SignupDialog';
@@ -297,7 +297,7 @@ export default function App() {
   else if (['saved','subscriptions'].includes(view) && !user) content = authChecking ? <LoadingSkeleton variant={view==='write'?'editor':view==='my-posts'?'dashboard':view==='admin'?'rows':'feed'} label="로그인 상태를 확인하고 있어요."/> : <EmptyState title={view==='subscriptions'?'구독한 멤버의 새 포스트를 모아 보세요.':'저장한 포스트를 계정에서 모아 보세요.'} action="로그인" onAction={() => setAuthOpen(true)}>로그인하면 다른 기기에서도 이어서 볼 수 있어요.</EmptyState>;
   else if (view === 'search') content = <Explore topics={topics} writers={currentSearchWriters.writers} writersLoading={currentSearchWriters.loading} writersError={currentSearchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error} adsEnabled={adsEnabled}/>;
   else if (currentFeed.loading && !currentFeed.posts.length) content = <LoadingSkeleton/>;
-  else if (currentFeed.posts.length) content = currentFeed.posts.flatMap((p, i) => [<PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>,...(view==='home'&&isFeedAdPosition(i,currentFeed.posts.length)?[<FeedAd key={'ad-after-'+p.id} after={i+1} enabled={adsEnabled}/>]:[])]);
+  else if (currentFeed.posts.length) content = currentFeed.posts.flatMap((p, i) => [<PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>,...(view==='home'&&isHomeAdPosition(i)?[<FeedAd key={'ad-after-'+p.id} after={i+1} enabled={adsEnabled}/>]:[])]);
   else if (!currentFeed.error) content = <EmptyState title={view==='author'&&writerFilters.kind==='notice'?'아직 업로드된 공지가 없어요.':view==='subscriptions'?'구독한 멤버의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && !(view==='author'&&writerFilters.kind==='notice') && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>프로필에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">멤버 둘러보기</button></>:view==='author'&&writerFilters.kind==='notice'?(canStartPost?'상단의 포스트 작성에서 게시 종류를 공지로 선택해 보세요.':'새로운 공지가 올라오면 이곳에서 읽을 수 있어요.'):view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
 
   return <>

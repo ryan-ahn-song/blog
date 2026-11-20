@@ -1,9 +1,12 @@
 # Home and search advertising
 
-Home and search insert one labelled AdFit slot after each seven organic posts
-(7, 14, 21, 28…), including across appended API pages. A non-empty list with fewer
-than seven posts gets one ad after its last post. Empty lists have no ads. Ads are
-not stored as posts and do not change totals, pagination, likes or bookmarks.
+Home places a labelled AdFit slot directly after the first organic post, so the
+second feed item is always the ad placement. Further slots follow every seven
+organic posts (after organic posts 1, 8, 15, 22, ...). Search retains slots after
+organic posts 7, 14, 21, ... and at least one after the last result when there are
+1–6 results. Empty lists show no ad. Organic ordering and pagination stay intact.
+Ad rendering still depends on AdFit fill, privacy preferences and available width.
+Ads are not stored as posts and do not change totals, likes or bookmarks.
 Search uses a matching card within the latest/results grid. Writer pages, saved
 posts, subscriptions and the article reader do not display ads.
 
