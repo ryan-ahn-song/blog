@@ -9,7 +9,7 @@ const { Miniflare, convertV4MiniflareOptions } = require('miniflare');
 const mf = new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:fileURLToPath(new URL('../apps/backend/dist/index.js',import.meta.url)),compatibilityDate:'2026-11-10',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'auth-test'},r2Buckets:['MEDIA']}));
 try {
   const db=await mf.getD1Database('DB');
-  for (const file of ['0001_auth.sql','0002_google_roles_posts.sql','0003_live_content.sql','0004_writer_profiles.sql','0005_block_documents.sql','0006_writer_subscriptions.sql','0007_post_reads.sql','0008_github_login.sql','0009_writer_taxonomy.sql','0010_post_comments.sql','0011_signup_consent.sql','0012_writer_applications.sql','0013_account_controls.sql','0014_security_performance.sql','0015_media_references.sql','0016_session_inactivity.sql','0017_notices_reading_history.sql','0018_usernames.sql']) {
+  for (const file of ['0001_auth.sql','0002_google_roles_posts.sql','0003_live_content.sql','0004_writer_profiles.sql','0005_block_documents.sql','0006_writer_subscriptions.sql','0007_post_reads.sql','0008_github_login.sql','0009_writer_taxonomy.sql','0010_post_comments.sql','0011_signup_consent.sql','0012_writer_applications.sql','0013_account_controls.sql','0014_security_performance.sql','0015_media_references.sql','0016_session_inactivity.sql','0017_notices_reading_history.sql','0018_usernames.sql','0019_mcp.sql','0020_post_pins.sql']) {
     const sql=await readFile(new URL('../apps/backend/migrations/'+file,import.meta.url),'utf8');
     for(const statement of sql.split(';').filter(s=>s.trim()))await db.prepare(statement).run();
   }

@@ -4,7 +4,7 @@ import { Avatar } from './ContentViews';
 import {shortName} from './display-name';
 import LoadingSkeleton from './LoadingSkeleton';
 
-export function TrendingPostCards({posts,ranked=true}){return (ranked?posts.slice(0,3):posts).map((post,index)=><button className="trending-post-card" key={post.id} data-post={post.id} aria-label={post.title+' 읽기'}>{ranked&&<span className="trending-post-rank">{String(index+1).padStart(2,'0')}</span>}<span className="trending-post-copy"><strong>{post.title}</strong>{post.summary&&<p>{post.summary}</p>}</span><span className="trending-post-arrow" aria-hidden="true">↗</span></button>);}
+export function TrendingPostCards({posts,ranked=true}){return (ranked?posts.slice(0,3):posts).map((post,index)=><button className="trending-post-card" key={post.id} data-post={post.id} aria-label={post.title+' 읽기'}>{ranked&&<span className={'trending-post-rank'+(post.pinned?' pinned-rank':'')}>{post.pinned?'고정':String(index+1).padStart(2,'0')}</span>}<span className="trending-post-copy"><strong>{post.title}</strong>{post.summary&&<p>{post.summary}</p>}</span><span className="trending-post-arrow" aria-hidden="true">↗</span></button>);}
 
 export default function CommunitySidebar({authChecking,view,user,refreshKey,onLogin}){
   const recent=view==='saved',listKey=recent?'recent:'+(user?.id??'anonymous'):'trending';

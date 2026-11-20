@@ -2,6 +2,7 @@ import { cleanupAccountMedia } from './account';
 import { handleAuth } from './auth';
 import { handleAdmin } from './admin';
 import { handlePosts, handleMedia, handleReaction } from './posts';
+import {handlePostPin} from './post-pins';
 import { handleTopics, handleWriters, handleTrending } from './catalog';
 import { handleSubscriptions } from './subscriptions';
 import { recordRead, authorDashboard } from './analytics';
@@ -47,6 +48,7 @@ export default {
       if(/^\/api\/posts\/[\w-]+\/comments(?:\/[\w-]+)?$/.test(path))return await handleComments(request,env);
       if (path === '/api/posts' || /^\/api\/posts\/[\w-]+$/.test(path)) return await handlePosts(request, env);
       if (/^\/api\/posts\/[\w-]+\/(like|bookmark)$/.test(path)) return await handleReaction(request,env);
+      if (/^\/api\/posts\/[\w-]+\/pin$/.test(path)) return await handlePostPin(request,env);
       if(/^\/api\/posts\/[\w-]+\/view$/.test(path))return await recordRead(request,env);
       if(path==='/api/author/dashboard')return await authorDashboard(request,env);
       if(path==='/api/reading-history')return await handleReadingHistory(request,env);
