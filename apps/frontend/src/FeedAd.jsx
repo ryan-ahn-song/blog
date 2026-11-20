@@ -11,13 +11,13 @@ export default function FeedAd({enabled=true,after}){
     let visible=false,wide=false,stop=null,disposed=false;
     function update(){
       if(disposed)return;
-      if(!visible||!wide||document.visibilityState==='hidden'){stop?.();stop=null;return;}
+      if(!adsAllowed()||!visible||!wide||document.visibilityState==='hidden'){stop?.();stop=null;return;}
       if(stop)return;
       let cancelled=false,ad=null,provider=null,timer;
       const callback='arkAdFitFail'+(++callbackId);
       const release=reserveAdUnit(async unit=>{
         try{
-          provider=await loadAdFit();if(cancelled)return;
+          provider=await loadAdFit();if(cancelled||!adsAllowed())return;
           ad=document.createElement('ins');ad.className='kakao_ad_area';ad.style.display='none';
           ad.dataset.adUnit=unit;ad.dataset.adWidth='300';ad.dataset.adHeight='250';ad.dataset.adOnfail=callback;
           window[callback]=()=>{if(!cancelled&&!disposed){stop?.();stop=null;setFailed(true);}};
