@@ -20,6 +20,7 @@
     "check": "npm run check --workspaces",
     "test:render": "node scripts/check-render.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
+    "test:adfit": "node scripts/test-adfit.mjs",
     "test:profile-media": "npm run build:backend && node scripts/test-profile-media.mjs",
     "test:mcp": "npm run build:backend && node scripts/test-mcp.mjs && node scripts/test-mcp-ui.mjs",
     "test:auth": "npm run build:backend && node --experimental-strip-types scripts/test-auth.mjs",

@@ -42,7 +42,13 @@ export default {
     if(!api&&result.headers.get('Content-Type')?.includes('text/html')){
       result.headers.set('Cache-Control','private, no-store');
       if(canonical)result.headers.set('Link','<'+canonical+'>; rel="canonical"');
-      result.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests");
+      // The shared SPA can enter Home without reloading. The standalone OAuth
+      // consent shell stays strict; the component mounts only in the Home feed.
+      const ads=url.pathname!=='/connect';
+      const scripts=ads?' https://t1.kakaocdn.net https://serv.ds.kakao.com https://display.ad.daum.net':'';
+      const connections=ads?' https://serv.ds.kakao.com https://display.ad.daum.net https://stat.ad.daum.net https://track.ad.daum.net https://t1.kakaocdn.net':'';
+      const frames=ads?" 'self' https://t1.kakaocdn.net https://t1.daumcdn.net https://serv.ds.kakao.com https://display.ad.daum.net":'';
+      result.headers.set('Content-Security-Policy',`default-src 'self'; script-src 'self'${scripts}; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'${connections}; frame-src https://www.youtube-nocookie.com https://player.vimeo.com${frames}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests`);
     }
     return result;
   },
