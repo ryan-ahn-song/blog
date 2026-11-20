@@ -1,3 +1,4 @@
+import LoadingSkeleton from './LoadingSkeleton';
 import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest } from './api';
 import UsernameField from './UsernameField';
@@ -8,7 +9,7 @@ function Notice({document}) {
 export function LegalDocuments(){
   const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   useEffect(()=>{const controller=new AbortController();setError('');api('/api/auth/legal',{signal:controller.signal}).then(setData).catch(e=>{if(!controller.signal.aborted)setError(e.message);});return()=>controller.abort();},[retry]);
-  return error?<p className="auth-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(n=>n+1)}>다시 시도</button></p>:data?<><p className="legal-review">{data.review_notice}</p>{Object.entries(data.documents).map(([key,document])=><Notice key={key} document={document}/>)}<p className="legal-contact">문의 <a href={'mailto:'+data.contact}>{data.contact}</a><br/>문서 버전 {data.version}</p></>:<p role="status">약관을 불러오고 있어요.</p>;
+  return error?<p className="auth-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(n=>n+1)}>다시 시도</button></p>:data?<><p className="legal-review">{data.review_notice}</p>{Object.entries(data.documents).map(([key,document])=><Notice key={key} document={document}/>)}<p className="legal-contact">문의 <a href={'mailto:'+data.contact}>{data.contact}</a><br/>문서 버전 {data.version}</p></>:<LoadingSkeleton variant="account" label="약관을 불러오고 있어요."/>;
 }
 export default function SignupDialog({signup,onComplete,onCancel}){
   const [username,setUsername]=useState(''),[usernameValid,setUsernameValid]=useState(false);

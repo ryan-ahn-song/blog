@@ -1,3 +1,4 @@
+import {bootHtml,bootKind} from './boot';
 import {plainBio} from '../../shared/bio';
 import {CANONICAL_ORIGIN} from '../../shared/site';
 import {pageRoute,viewPath,writerPath} from '../../shared/paths';
@@ -55,7 +56,8 @@ export function applyPublicHtml(source:string,page:PublicPage|null,status:number
  const clean=source.replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi,'').replace(/<link\b(?=[^>]*rel=["']canonical["'])[^>]*>/gi,'').replace(/<meta\b(?=[^>]*(?:name=["'](?:description|robots|twitter:[^"']+)["']|property=["']og:[^"']+["']))[^>]*>/gi,'');
  const head=page?metadata(page):'<title>'+(status===404?'페이지를 찾을 수 없습니다.':'잠시 후 다시 시도해 주세요.')+' | 21st ARK</title><meta name="robots" content="noindex,nofollow"/>';
  const body=page?pageHtml(page):'<main class="seo-page"><h1>'+(status===404?'페이지를 찾을 수 없습니다.':'잠시 후 다시 시도해 주세요.')+'</h1><a href="/home">홈으로</a></main>';
- return clean.replace('</head>',head+'<style>.seo-page{max-width:850px;margin:60px auto;padding:24px;color:#eee;background:#111;font-family:sans-serif;line-height:1.8}.seo-page a{color:inherit}.seo-page img{max-width:100%;height:auto}.seo-text{white-space:pre-wrap}.seo-page pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head>').replace(/<div id="root"><\/div>/,'<div id="root">'+body+'</div>');
+ const prepared=clean.replace('</head>',head+'<style>.seo-page{max-width:850px;margin:60px auto;padding:24px;color:#eee;background:#111;font-family:sans-serif;line-height:1.8}.seo-page a{color:inherit}.seo-page img{max-width:100%;height:auto}.seo-text{white-space:pre-wrap}.seo-page pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head>');
+ return page?bootHtml(prepared,bootKind(page),body):prepared.replace(/<div id="root"><\/div>/,'<div id="root">'+body+'</div>');
 }
 export async function sitemapResponse(url:URL,env:Env):Promise<Response|null>{
  if(url.pathname==='/robots.txt')return new Response('User-agent: *\nAllow: /\nDisallow: /api/\nAllow: /api/social/\nSitemap: '+CANONICAL_ORIGIN+'/sitemap.xml\n',{headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'public, max-age=60'}});

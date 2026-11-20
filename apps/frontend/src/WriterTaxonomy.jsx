@@ -1,3 +1,4 @@
+import LoadingSkeleton from './LoadingSkeleton';
 import {useEffect,useId,useRef,useState} from 'react';
 import {api,jsonRequest} from './api';
 
@@ -51,7 +52,7 @@ export function WriterTaxonomySidebar({writerId,user,total,version,filters,onFil
       {!catalog.loading&&!catalog.error&&!data?.categories.length&&<p className="taxonomy-empty">아직 분류한 포스트가 없어요.</p>}
     </section>
     <section><h3>태그</h3><div className="writer-tag-list">{data?.tags.map(label=><button key={label.id} aria-pressed={filters.tag===label.id} onClick={()=>onFilter('tag',label.id)}>#{label.name}<small>{label.post_count}</small></button>)}</div>{!catalog.loading&&!catalog.error&&!data?.tags.length&&<p className="taxonomy-empty">아직 태그가 없어요.</p>}</section>
-    {catalog.loading&&<p className="taxonomy-empty" role="status">불러오는 중…</p>}{catalog.error&&<p className="taxonomy-error" role="alert">{catalog.error} <button onClick={catalog.reload}>다시 시도</button></p>}
+    {catalog.loading&&<LoadingSkeleton variant="text" label="분류와 태그를 불러오고 있어요."/>}{catalog.error&&<p className="taxonomy-error" role="alert">{catalog.error} <button onClick={catalog.reload}>다시 시도</button></p>}
     {own&&<TaxonomyManager writerId={writerId} open={managing} onClose={()=>setManaging(false)} version={version} onChanged={onChanged}/>}
   </aside>;
 }

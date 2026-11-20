@@ -3,6 +3,7 @@ import {writerPath,postPath} from '../../../shared/paths';
 import {shortName} from './display-name';
 import {plainBio} from '../../../shared/bio';
 import FeedAd,{isFeedAdPosition} from './FeedAd';
+import LoadingSkeleton from './LoadingSkeleton';
 
 export function topicName(topics, id) { return topics.find(t => t.id === id)?.name ?? '주제'; }
 export function postDate(post) { return new Date((post.published_at ?? post.created_at) * 1000).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }); }
@@ -41,11 +42,11 @@ export function Explore({ topics, writers, writersLoading, writersError, posts, 
   const slide = direction => strip.current?.scrollBy({ left: direction * strip.current.clientWidth * .8, behavior: (document.documentElement.dataset.reduceMotion==='true'||matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'instant' : 'smooth' });
   return <>
     <section className="explore-section"><div className="explore-heading"><h2>{query || topicId !== 'all' ? '검색한 프로필' : '멤버 둘러보기'}</h2><div className="carousel-controls"><button onClick={() => slide(-1)} disabled={edges.start} aria-label="이전 프로필">‹</button><button onClick={() => slide(1)} disabled={edges.end} aria-label="다음 프로필">›</button></div></div>
-      {writersError ? <p className="auth-error" role="alert">{writersError}</p> : writersLoading ? <p className="explore-empty" role="status">프로필을 불러오고 있어요.</p> : null}
+      {writersError ? <p className="auth-error" role="alert">{writersError}</p> : writersLoading ? <LoadingSkeleton variant="creators" label="프로필을 불러오고 있어요."/> : null}
       <div className="creator-strip" ref={strip} onScroll={update}>{writers.map(w => <a href={writerPath(w)} data-username={w.username} className="creator-card" key={w.id} data-author={w.id} data-author-name={w.name}><span className="creator-picture creator-initial">{w.avatar_url?<img src={w.avatar_url} alt="" loading="lazy"/>:<span>{Array.from(w.name)[0]}</span>}</span><strong title={w.name}>{shortName(w.name)}</strong><small>{plainBio(w.bio) || '업로드한 포스트 ' + w.post_count + '개'}</small></a>)}</div>
       {!writersLoading && !writersError && !writers.length && <p className="explore-empty">일치하는 프로필이 없어요.</p>}
     </section>
-    <section className="explore-section"><div className="explore-heading"><h2>{query || topicId !== 'all' ? '검색한 포스트' : '최신 포스트'} <small>{total}</small></h2></div>{loading && !posts.length ? <p role="status">포스트를 불러오고 있어요.</p> : error ? null : posts.length ? <div className="explore-results">{posts.flatMap((p,index) => [<a href={postPath(p)} key={p.id} className="explore-result" data-post={p.id}><span className="result-category">{topicName(topics, p.category)}</span><strong>{p.title}</strong><p>{p.summary}</p><small>{p.writer.name} · {postDate(p)}</small></a>,...(isFeedAdPosition(index,posts.length)?[<FeedAd key={'search-ad-after-'+p.id} after={index+1} variant="grid" enabled={adsEnabled}/>]:[])])}</div> : <p className="explore-empty">일치하는 포스트가 없어요.</p>}</section>
+    <section className="explore-section"><div className="explore-heading"><h2>{query || topicId !== 'all' ? '검색한 포스트' : '최신 포스트'} {!loading&&<small>{total}</small>}</h2></div>{loading && !posts.length ? <LoadingSkeleton variant="results"/> : error ? null : posts.length ? <div className="explore-results">{posts.flatMap((p,index) => [<a href={postPath(p)} key={p.id} className="explore-result" data-post={p.id}><span className="result-category">{topicName(topics, p.category)}</span><strong>{p.title}</strong><p>{p.summary}</p><small>{p.writer.name} · {postDate(p)}</small></a>,...(isFeedAdPosition(index,posts.length)?[<FeedAd key={'search-ad-after-'+p.id} after={index+1} variant="grid" enabled={adsEnabled}/>]:[])])}</div> : <p className="explore-empty">일치하는 포스트가 없어요.</p>}</section>
     <section className="explore-section"><div className="explore-heading"><h2>주제 둘러보기</h2></div><div className="topic-grid">{topics.map(t => <button key={t.id} className="topic-tile" data-explore-topic={t.id} style={{ '--topic-color': t.color }}><span><strong>{t.name}</strong><small>{t.post_count}개의 포스트</small></span><span aria-hidden="true">{t.symbol}</span></button>)}</div></section>
   </>;
 }

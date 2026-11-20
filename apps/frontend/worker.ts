@@ -1,5 +1,6 @@
 import { CANONICAL_ORIGIN } from '../../shared/site';
 import {loadPublicPage,applyPublicHtml,sitemapResponse} from './seo';
+import {bootHtml} from './boot';
 interface Env { ASSETS: Fetcher; API: Fetcher }
 export default {
   async fetch(request:Request,env:Env):Promise<Response>{
@@ -18,7 +19,8 @@ export default {
     if(url.pathname==='/'&&['GET','HEAD'].includes(request.method))return new Response(null,{status:301,headers:{Location:CANONICAL_ORIGIN+'/home'+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
     if(url.pathname==='/connect'&&['GET','HEAD'].includes(request.method)){
       const asset=await env.ASSETS.fetch(new Request(new URL('/',url),{headers:{Accept:'text/html'}}));
-      response=new Response(asset.body,asset);response.headers.set('X-Robots-Tag','noindex, nofollow');response.headers.set('Referrer-Policy','no-referrer');
+      const headers=new Headers(asset.headers);headers.delete('Content-Length');headers.delete('ETag');
+      response=new Response(bootHtml(await asset.text(),'consent'),{status:asset.status,headers});response.headers.set('X-Robots-Tag','noindex, nofollow');response.headers.set('Referrer-Policy','no-referrer');
     }else if(!api&&['GET','HEAD'].includes(request.method)&&!url.pathname.startsWith('/assets/')){
       const map=await sitemapResponse(url,env);
       if(map)response=map;

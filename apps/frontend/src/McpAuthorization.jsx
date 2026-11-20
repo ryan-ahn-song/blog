@@ -1,3 +1,4 @@
+import LoadingSkeleton from './LoadingSkeleton';
 import {useEffect,useRef,useState} from 'react';
 import {api,jsonRequest,setApiScope} from './api';
 import {restoreAccount} from './auth-state';
@@ -70,7 +71,7 @@ export default function McpAuthorization(){
     <header><a href="/home" aria-label="21st ARK 홈">21st ARK</a><span>앱 연결</span></header>
     <section className="mcp-consent" aria-labelledby="mcp-consent-title">
       <p className="mcp-eyebrow">계정 접근 권한</p><h1 id="mcp-consent-title">{data?<>이 앱을<br/>연결할까요?</>:'연결 요청 확인'}</h1>
-      {checking?<p role="status" className="settings-note">계정과 연결 앱을 확인하고 있어요.</p>:data?<>
+      {checking?<LoadingSkeleton variant="account" label="계정과 연결 앱을 확인하고 있어요."/>:data?<>
         <div className="mcp-client"><strong>{data.client.clientName}</strong><span>{data.client.clientDomain??'앱에서 직접 등록한 이름 · 신원 미확인'}</span></div>
         <p className="mcp-destination">승인 결과를 받을 주소 <strong>{data.client.redirectHost}</strong></p>
         {data.client.redirectIsLoopback&&<p className="mcp-warning">내 컴퓨터의 앱에 접근 권한을 전달합니다. 방금 직접 연결을 시작한 앱인지 확인해 주세요.</p>}

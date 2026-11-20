@@ -5,7 +5,7 @@ export function setApiScope(next){if(scope!==next){scope=next;clearApiCache();}}
 const cacheable=path=>/^\/api\/(posts(?:\?|\/[^/?]+$)|writers(?:\?|\/[^/?]+$|$)|topics$|trending$|subscriptions$|author\/dashboard\?)/.test(path);
 export async function api(path,options={}){
   // Public catalog data remains valid while the first auth request establishes scope.
-  const publicData=path==='/api/topics'||path==='/api/trending',requestedScope=scope;
+  const publicData=path==='/api/topics'||path==='/api/trending'||/^\/api\/writers(?:\?|$)/.test(path),requestedScope=scope;
   const method=(options.method??'GET').toUpperCase(),cached=method==='GET'&&cacheable(path),key=(publicData?'public':scope)+':'+epoch+':'+path;
   if(options.signal?.aborted)throw new DOMException('Aborted','AbortError');
   async function request(){

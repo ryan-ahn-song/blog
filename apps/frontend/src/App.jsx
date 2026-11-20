@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AppShell from './AppShell';
 import FeedAd,{isFeedAdPosition} from './FeedAd';
+import LoadingSkeleton from './LoadingSkeleton';
 import AuthDialog from './AuthDialog';
 import SignupDialog from './SignupDialog';
 import SettingsDialog from './SettingsDialog';
@@ -40,10 +41,11 @@ export default function App() {
   const [feed, setFeed] = useState(emptyFeed), [topics, setTopics] = useState([]), [writers, setWriters] = useState([]), [writerTotal, setWriterTotal] = useState(0), [writerPage, setWriterPage] = useState(0);
   const [topicsError,setTopicsError]=useState('');
   const [catalogLoading, setCatalogLoading] = useState(true), [catalogError, setCatalogError] = useState('');
-  const [searchWriters, setSearchWriters] = useState({ writers: [], loading: false, error: '' });
+  const [searchWriters, setSearchWriters] = useState({key:'',writers:[],loading:true,error:''});
   const [pending, setPending] = useState(new Set()), [message, setMessage] = useState('');
-  const [article, setArticle] = useState(null),[articleId,setArticleId]=useState(null),[articleLoading,setArticleLoading]=useState(false),[articleError,setArticleError]=useState('');
-  const articleIdRef=useRef(null),articleReturn=useRef(null),readerScroll=useRef(null),readerFocus=useRef(null),lastRoute=useRef(null);
+  const [article, setArticle] = useState(null),[articleId,setArticleId]=useState(initialRoute.type==='post'?initialRoute.id:null),[articleLoading,setArticleLoading]=useState(initialRoute.type==='post'),[articleError,setArticleError]=useState('');
+  const articleIdRef=useRef(initialRoute.type==='post'?initialRoute.id:null),articleReturn=useRef(null),readerScroll=useRef(null),readerFocus=useRef(null),lastRoute=useRef(null);
+  const authCheckingRef=useRef(authChecking),deferredArticle=useRef(false);authCheckingRef.current=authChecking;
   const [subscriptionVersion,setSubscriptionVersion]=useState(0);
   const [writerFilters,setWriterFilters]=useState({category:null,tag:null}),[taxonomyVersion,setTaxonomyVersion]=useState(0);
   const [settings,setSettings]=useState(null),[loggingOut,setLoggingOut]=useState(false);
@@ -54,6 +56,8 @@ export default function App() {
   const criteria = JSON.stringify({ kind:view==='author'?(writerFilters.kind??'post'):undefined, bookmarked: view === 'saved' ? '1' : undefined, subscribed:view==='subscriptions'?'1':undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined,writer_category:view==='author'?writerFilters.category??undefined:undefined,writer_tag:view==='author'?writerFilters.tag??undefined:undefined });
   const feedKey = criteria + ':' + (user?.id ?? 'anonymous')+':'+version+':'+subscriptionVersion+':'+taxonomyVersion;
   const currentFeed = feed.key === feedKey ? feed : feedCache.current.get(feedKey)??{ ...emptyFeed, key: feedKey };
+  const searchKey=JSON.stringify([query.trim(),topicId,version]);
+  const currentSearchWriters=searchWriters.key===searchKey?searchWriters:{writers:[],loading:true,error:''};
   const title = author ? author.name || '프로필' : category !== 'all' ? topicName(topics, category) : { author:'프로필',home: '홈', search: '검색', writers: '멤버', saved: '저장한 포스트', subscriptions:'구독한 포스트', write: '포스트 작성', 'my-posts': '내 포스트 관리', admin: '멤버 관리' }[view];
   useEffect(()=>{setPageMetadata({article,author,view,routeError});},[article,author,view,routeError]);
   const refreshContent = () => { clearApiCache();feedCache.current.clear(); setRequestPage(0); setVersion(v => v + 1); };
@@ -97,11 +101,11 @@ export default function App() {
     return()=>controller.abort();
   },[version]);
   useEffect(()=>{
-    if(authChecking||view!=='writers'||articleId)return;
+    if(view!=='writers'||articleId)return;
     const controller=new AbortController();setCatalogLoading(!writers.length);setCatalogError('');
     api('/api/writers',{signal:controller.signal}).then(people=>{if(!controller.signal.aborted){setWriters(people.writers);setWriterTotal(people.total);setWriterPage(0);}}).catch(error=>{if(!controller.signal.aborted)setCatalogError(error.message);}).finally(()=>{if(!controller.signal.aborted)setCatalogLoading(false);});
     return()=>controller.abort();
-  },[view,version,articleId,authChecking]);
+  },[view,version,articleId]);
   useEffect(() => {
     if (authChecking||articleId||(view==='author'&&!author)||!browsing.includes(view) || (['saved','subscriptions'].includes(view) && !user)) return;
     const controller = new AbortController();
@@ -117,13 +121,13 @@ export default function App() {
   }, [view, criteria, feedKey, requestPage, version, subscriptionVersion, taxonomyVersion,authChecking,articleId]);
   useEffect(()=>{if(feed.key&&!feed.loading&&!feed.error){feedCache.current.set(feed.key,feed);while(feedCache.current.size>12)feedCache.current.delete(feedCache.current.keys().next().value);}},[feed]);
   useEffect(() => {
-    if (authChecking||view !== 'search') return;
-    const controller = new AbortController(); setSearchWriters({ writers: [], loading: true, error: '' });
+    if (view !== 'search') return;
+    const controller = new AbortController(); setSearchWriters({key:searchKey,writers:[],loading:true,error:''});
     const timer = setTimeout(() => api('/api/writers?' + new URLSearchParams({ q: query.trim(), topic: topicId }), { signal: controller.signal }).then(result => {
-      if (!controller.signal.aborted) setSearchWriters({ writers: result.writers, loading: false, error: '' });
-    }).catch(e => { if (!controller.signal.aborted) setSearchWriters({ writers: [], loading: false, error: e.message }); }), 250);
+      if (!controller.signal.aborted) setSearchWriters({key:searchKey,writers:result.writers,loading:false,error:''});
+    }).catch(e => { if (!controller.signal.aborted) setSearchWriters({key:searchKey,writers:[],loading:false,error:e.message}); }), 250);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [view, query, topicId, version,authChecking]);
+  }, [view,searchKey]);
   useEffect(() => { document.title = (articleId?(article?.title??'포스트 읽기'):title) + ' | 21st ARK'; }, [title,articleId,article?.title]);
   useEffect(() => { if (view === 'search'&&!articleId) searchRef.current?.focus({ preventScroll: true }); }, [view,articleId]);
   useLayoutEffect(()=>{
@@ -134,7 +138,7 @@ export default function App() {
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 3000); return () => clearTimeout(timer); }, [message]);
   useEffect(() => {
     if(authChecking)return;
-    if(articleIdRef.current)openArticle(articleIdRef.current,false,true);
+    if(articleIdRef.current){const resume=deferredArticle.current;deferredArticle.current=false;openArticle(articleIdRef.current,false,!resume);}
   }, [user?.id,user?.role,authChecking]);
   useEffect(()=>{
     if(authChecking||!canWrite||view!=='write'||!editId||editing?.id===editId)return;
@@ -230,13 +234,14 @@ export default function App() {
     }
     articleIdRef.current=id;setArticleId(id);setArticleError('');setArticleLoading(true);if(!same||refresh)setArticle(null);if(!refresh)readerScroll.current=0;
     const request=++articleRequest.current;
+    if(authCheckingRef.current){deferredArticle.current=true;return;}
     try{const result=await api('/api/posts/'+id);if(request!==articleRequest.current)return;setArticle(result.post);history.replaceState(history.state,'',postPath(result.post));lastRoute.current=location.href;
       if(!refresh&&result.post.status==='published'&&activeUserId.current){const actor=activeUserId.current;readQueue=readQueue.catch(()=>{}).then(()=>activeUserId.current===actor?api('/api/reading-history',jsonRequest('POST',{post_id:id})):null).catch(()=>{});}
       if(!refresh&&result.post.status==='published'&&navigator.doNotTrack!=='1'&&!navigator.globalPrivacyControl){readQueue=readQueue.catch(()=>{}).then(()=>api('/api/posts/'+id+'/view',jsonRequest('POST',{}))).catch(()=>{});}
     }catch(e){if(request===articleRequest.current){setArticle(null);setArticleError(e.message);}}
     finally{if(request===articleRequest.current)setArticleLoading(false);}
   }
-  function clearArticle(){articleRequest.current++;articleIdRef.current=null;setArticleId(null);setArticle(null);setArticleLoading(false);setArticleError('');}
+  function clearArticle(){articleRequest.current++;deferredArticle.current=false;articleIdRef.current=null;setArticleId(null);setArticle(null);setArticleLoading(false);setArticleError('');}
   function returnFromArticle(){
     if(history.state?.arkArticle&&history.state?.arkBrowse){history.back();return;}
     if(article?.writer)openWriter(article.writer.id,article.writer.name,article.writer.username);else navigate('home');
@@ -279,19 +284,19 @@ export default function App() {
   const adsEnabled=!articleId&&!settings&&!authOpen&&!signup&&!user?.needs_username;
   let content;
   if(routeError)content=<EmptyState title={routeError} action="홈으로" onAction={()=>navigate('home')}/>;
-  else if(view==='author'&&!author)content=<p role="status">프로필을 불러오고 있어요.</p>;
+  else if(view==='author'&&!author)content=<LoadingSkeleton variant="profile" label="프로필을 불러오고 있어요."/>;
   else if(authError&&!user&&[...restrictedViews,'saved','subscriptions'].includes(view))content=<EmptyState title="로그인 상태를 확인하지 못했습니다." action="다시 확인" onAction={refreshAuth}>연결 상태를 확인한 뒤 다시 시도해 주세요.</EmptyState>;
-  else if(restrictedViews.includes(view)&&authChecking&&!user)content=<p role="status">로그인 상태를 확인하고 있어요.</p>;
+  else if(restrictedViews.includes(view)&&authChecking&&!user)content=<LoadingSkeleton variant={view==='write'?'editor':view==='my-posts'?'dashboard':view==='admin'?'rows':'feed'} label="로그인 상태를 확인하고 있어요."/>;
   else if(restrictedViews.includes(view)&&(!canWrite||(view==='admin'&&user?.role!=='admin')))content=<EmptyState title={!user?'로그인이 필요합니다.':view==='admin'?'관리자만 볼 수 있는 페이지입니다.':'작성자 권한이 필요합니다.'} action={!user?'로그인':undefined} onAction={()=>setAuthOpen(true)}/>;
-  else if(view==='write'&&canWrite&&editId&&(editLoading||editing?.id!==editId))content=editError?<EmptyState title={editError} action="다시 시도" onAction={()=>setVersion(value=>value+1)}/>:<p role="status">편집할 포스트를 불러오고 있어요.</p>;
-  else if (view === 'write' && canWrite) content = <Suspense fallback={<p role="status">포스트 작성 화면을 불러오고 있어요.</p>}><Editor key={user.id + ':' + (editing?.id || 'new')} user={user} post={editing} topics={topics} onSaved={savedPost} onDirty={markDirty}/></Suspense>;
+  else if(view==='write'&&canWrite&&editId&&(editLoading||editing?.id!==editId))content=editError?<EmptyState title={editError} action="다시 시도" onAction={()=>setVersion(value=>value+1)}/>:<LoadingSkeleton variant="editor" label="편집할 포스트를 불러오고 있어요."/>;
+  else if (view === 'write' && canWrite) content = <Suspense fallback={<LoadingSkeleton variant="editor" label="포스트 작성 화면을 불러오고 있어요."/>}><Editor key={user.id + ':' + (editing?.id || 'new')} user={user} post={editing} topics={topics} onSaved={savedPost} onDirty={markDirty}/></Suspense>;
   else if (view === 'my-posts' && canWrite) content = <MyPosts user={user} onEdit={editPost} refreshKey={version} onChanged={refreshContent}/>;
   else if (view === 'admin' && user?.role === 'admin') content = <AdminPanel user={user} onChanged={refreshContent}/>;
 
-  else if (view === 'writers') content = catalogLoading ? <p role="status">멤버를 불러오고 있어요.</p> : catalogError ? null : writers.length ? <><WriterList writers={writers}/>{writers.length < writerTotal && <button className="pill load-more" onClick={moreWriters}>멤버 더 보기</button>}</> : <EmptyState title="아직 등록된 멤버가 없어요."/>;
-  else if (['saved','subscriptions'].includes(view) && !user) content = authChecking ? <p role="status">로그인 상태를 확인하고 있어요.</p> : <EmptyState title={view==='subscriptions'?'구독한 멤버의 새 포스트를 모아 보세요.':'저장한 포스트를 계정에서 모아 보세요.'} action="로그인" onAction={() => setAuthOpen(true)}>로그인하면 다른 기기에서도 이어서 볼 수 있어요.</EmptyState>;
-  else if (view === 'search') content = <Explore topics={topics} writers={searchWriters.writers} writersLoading={searchWriters.loading} writersError={searchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error} adsEnabled={adsEnabled}/>;
-  else if (currentFeed.loading && !currentFeed.posts.length) content = <p className="content-loading" role="status">포스트를 불러오고 있어요.</p>;
+  else if (view === 'writers') content = catalogLoading ? <LoadingSkeleton variant="members" label="멤버를 불러오고 있어요."/> : catalogError ? null : writers.length ? <><WriterList writers={writers}/>{writers.length < writerTotal && <button className="pill load-more" onClick={moreWriters}>멤버 더 보기</button>}</> : <EmptyState title="아직 등록된 멤버가 없어요."/>;
+  else if (['saved','subscriptions'].includes(view) && !user) content = authChecking ? <LoadingSkeleton variant={view==='write'?'editor':view==='my-posts'?'dashboard':view==='admin'?'rows':'feed'} label="로그인 상태를 확인하고 있어요."/> : <EmptyState title={view==='subscriptions'?'구독한 멤버의 새 포스트를 모아 보세요.':'저장한 포스트를 계정에서 모아 보세요.'} action="로그인" onAction={() => setAuthOpen(true)}>로그인하면 다른 기기에서도 이어서 볼 수 있어요.</EmptyState>;
+  else if (view === 'search') content = <Explore topics={topics} writers={currentSearchWriters.writers} writersLoading={currentSearchWriters.loading} writersError={currentSearchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error} adsEnabled={adsEnabled}/>;
+  else if (currentFeed.loading && !currentFeed.posts.length) content = <LoadingSkeleton/>;
   else if (currentFeed.posts.length) content = currentFeed.posts.flatMap((p, i) => [<PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>,...(view==='home'&&isFeedAdPosition(i,currentFeed.posts.length)?[<FeedAd key={'ad-after-'+p.id} after={i+1} enabled={adsEnabled}/>]:[])]);
   else if (!currentFeed.error) content = <EmptyState title={view==='author'&&writerFilters.kind==='notice'?'아직 업로드된 공지가 없어요.':view==='subscriptions'?'구독한 멤버의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && !(view==='author'&&writerFilters.kind==='notice') && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>프로필에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">멤버 둘러보기</button></>:view==='author'&&writerFilters.kind==='notice'?(canStartPost?'상단의 포스트 작성에서 게시 종류를 공지로 선택해 보세요.':'새로운 공지가 올라오면 이곳에서 읽을 수 있어요.'):view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
 

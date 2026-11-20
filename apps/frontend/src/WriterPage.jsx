@@ -4,9 +4,12 @@ import { Avatar } from './ContentViews';
 import ProfileForm from './ProfileForm';
 import ProfileBio from './ProfileBio';
 import {WriterTaxonomySidebar} from './WriterTaxonomy';
+import LoadingSkeleton from './LoadingSkeleton';
 
 export default function WriterPage({id,user,version,taxonomyVersion,filters,onFilter,onTaxonomyChanged,onLoaded,onSaved,onShare,onLogin,onSubscriptionChange,children}) {
-  const [writer,setWriter]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[editing,setEditing]=useState(false),[busy,setBusy]=useState(false);
+  const [profile,setProfile]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[editing,setEditing]=useState(false),[busy,setBusy]=useState(false);
+  const profileKey=id+':'+(user?.id??'anonymous'),writer=profile?.key===profileKey?profile.writer:null;
+  const setWriter=update=>setProfile(previous=>({key:profileKey,writer:typeof update==='function'?update(previous?.key===profileKey?previous.writer:null):update}));
   const dialog=useRef(null);
   const activeUser=useRef(user?.id);activeUser.current=user?.id;
   const [subscribing,setSubscribing]=useState(false),[subscriptionError,setSubscriptionError]=useState('');
@@ -25,7 +28,7 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
     catch(e){if(activeUser.current===actorId)setSubscriptionError(e.message);}finally{setSubscribing(false);}
   }
   if(error)return <div className="writer-page-message"><p className="auth-error" role="alert">{error}</p><button className="pill" onClick={()=>setRetry(n=>n+1)}>다시 시도</button><button className="pill" data-view="writers">멤버 목록</button></div>;
-  if(!writer)return <p className="writer-page-message" role="status">프로필을 불러오고 있어요.</p>;
+  if(!writer)return <LoadingSkeleton variant="profile" label="프로필을 불러오고 있어요."/>;
   return <article className="writer-page">
     <div className={'writer-cover '+(!writer.cover_url?'no-cover':'')}>{writer.cover_url&&<img src={writer.cover_url} alt={writer.name+'의 커버'} fetchPriority="high"/>}</div>
     <div className="writer-profile-body">

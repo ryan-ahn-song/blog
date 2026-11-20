@@ -1,3 +1,4 @@
+import LoadingSkeleton from './LoadingSkeleton';
 import AccountControls from './AccountControls';
 import UsernameSettings from './UsernameSettings';
 import McpConnections from './McpConnections';
@@ -30,7 +31,7 @@ export default function SettingsDialog({section,onClose,user,onLogin,onRoleChang
   return <dialog ref={dialog} className="auth-dialog settings-dialog" aria-labelledby="settings-title" onCancel={event=>{if(accountBusy||usernameBusy||mcpBusy)event.preventDefault();else onClose();}} onClose={onClose}>
     <button className="auth-close" aria-label="설정 닫기" disabled={accountBusy||usernameBusy||mcpBusy} onClick={onClose}>×</button><h2 id="settings-title">{titles[section]??'설정'}</h2>
     {section==='account'&&(user?<>
-      {error?<p className="auth-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(value=>value+1)}>다시 시도</button></p>:!current?<p role="status" className="settings-note">계정 정보를 불러오고 있어요.</p>:<>
+      {error?<p className="auth-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(value=>value+1)}>다시 시도</button></p>:!current?<LoadingSkeleton variant="account" label="계정 정보를 불러오고 있어요."/>:<>
         <dl className="settings-account"><div><dt>표시 이름</dt><dd>{current.user.name}</dd></div><div><dt>로그인 이메일</dt><dd>{current.user.email}</dd></div><div><dt>권한</dt><dd>{roleName(current.user.role)}</dd></div></dl>
         <UsernameSettings key={current.user.id} user={current.user} disabled={accountBusy||mcpBusy} onBusy={setUsernameBusy} onSaved={saved=>{setAccount(previous=>previous?.user.id===saved.id?{...previous,user:saved}:previous);onProfileUpdated(saved);}}/>
         <McpConnections key={'mcp-'+current.user.id} user={current.user} disabled={accountBusy||usernameBusy} onBusy={setMcpBusy}/>

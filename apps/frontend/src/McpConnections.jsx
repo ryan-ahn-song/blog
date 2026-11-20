@@ -1,3 +1,4 @@
+import LoadingSkeleton from './LoadingSkeleton';
 import {useEffect,useState} from 'react';
 import {api,jsonRequest} from './api';
 import './mcp.css';
@@ -13,7 +14,7 @@ export default function McpConnections({user,disabled,onBusy}){
       {!data.connections.length?<p className="settings-note">연결된 앱이 없습니다.</p>:data.connections.map(connection=><article className="mcp-connection" key={connection.id}><div><strong>{connection.client_name}</strong><span>{connection.active?'연결됨':connection.revoked_at?'연결 해제됨':'만료됨'}</span></div><p>{connection.client_domain??connection.redirect_host}</p><details><summary>허용한 권한과 연결 정보</summary><ul>{connection.scope.map(scope=><li key={scope}>{data.scopes[scope]??scope}</li>)}</ul><p>연결: {date(connection.created_at)}<br/>만료: {date(connection.expires_at)}{connection.last_used_at&&<><br/>최근 사용: {date(connection.last_used_at)}</>}</p></details>{connection.active&&<button className="text-button" disabled={busy||disabled} onClick={()=>setConfirm(connection)}>연결 해제</button>}</article>)}
       {confirm&&<div className="mcp-revoke"><strong>{confirm.client_name} 연결을 해제할까요?</strong><p>이 앱은 더 이상 계정에 접근하거나 초안을 저장할 수 없습니다. 이미 저장한 초안은 유지됩니다.</p><div><button className="pill" disabled={busy} onClick={()=>setConfirm(null)}>취소</button><button className="pill danger-outline" disabled={busy} onClick={revoke}>{busy?'해제 중…':'연결 해제 확인'}</button></div></div>}
       {!!data.activity.length&&<details className="mcp-activity"><summary>최근 앱 활동</summary><ol>{data.activity.map(event=><li key={event.id}><strong>{labels[event.tool]??event.tool}</strong><span>{event.client_name} · {event.outcome==='ok'?'완료':'실패'}<br/>{date(event.created_at)}</span></li>)}</ol></details>}
-    </>:!error&&<p className="settings-note" role="status">연결된 앱을 불러오고 있어요.</p>}
+    </>:!error&&<LoadingSkeleton variant="account" label="연결된 앱을 불러오고 있어요."/>}
     {error&&<p className="auth-error" role="alert">{error} <button className="text-button" disabled={busy||disabled} onClick={()=>setRetry(n=>n+1)}>다시 시도</button></p>}
   </section>;
 }

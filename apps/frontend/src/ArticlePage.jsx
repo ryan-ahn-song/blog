@@ -4,11 +4,12 @@ import {Avatar,Icon,postDate,topicName} from './ContentViews';
 import CommentsSection from './CommentsSection';
 import {writerPath} from '../../../shared/paths';
 import {shortName} from './display-name';
+import LoadingSkeleton from './LoadingSkeleton';
 
 export default function ArticlePage({post,loading,error,topics,user,pending,onRetry,onEdit,onLogin}){
   useEffect(()=>{if(post)document.getElementById('reader-title')?.focus({preventScroll:true});},[post?.id]);
   if(error)return <div className="reader-message"><h2>포스트를 불러오지 못했어요.</h2><p className="auth-error" role="alert">{error}</p><button className="pill" onClick={onRetry}>다시 시도</button></div>;
-  if(!post)return <p className="reader-message" role="status">포스트를 불러오고 있어요.</p>;
+  if(!post)return <LoadingSkeleton variant="reader"/>;
   const canEdit=user&&['author','admin'].includes(user.role)&&(user.role==='admin'||user.id===post.writer.id);
   return <article className="reader-page" aria-labelledby="reader-title" aria-busy={loading}>
     <header className="reader-hero">

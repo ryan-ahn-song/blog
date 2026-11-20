@@ -20,6 +20,7 @@
     "check": "npm run check --workspaces",
     "test:render": "node scripts/check-render.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
+    "test:loading": "node scripts/test-loading.mjs",
     "test:adfit": "node scripts/test-adfit.mjs",
     "test:public-profiles": "npm run build:backend && node scripts/test-public-profiles.mjs && node scripts/test-public-profiles-ui.mjs",
     "test:profile-media": "npm run build:backend && node scripts/test-profile-media.mjs",
