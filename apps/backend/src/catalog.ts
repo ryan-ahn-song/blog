@@ -44,7 +44,7 @@ export async function handleWriters(request: Request, env: AuthEnv & {MEDIA_BASE
   const params = new URL(request.url).searchParams;
   const q = (params.get('q') ?? '').trim().slice(0,100), topic = params.get('topic'), category = params.get('category');
   if (category && !['all','tech','life'].includes(category)) throw new HttpError(400,'분류를 확인해 주세요.');
-  const clauses = ['u.disabled=0'];
+  const clauses = ["u.disabled=0 AND u.role IN ('author','admin')"];
   const values: string[] = [];
   if (q) { clauses.push("(instr(lower(u.name||' '||coalesce(u.username,'')||' '||u.bio),lower(?))>0 OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND (instr(lower(p.title||' '||p.summary||' '||p.body),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0) OR EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND instr(lower(l.name),lower(?))>0))))"); values.push(q,q,q,q); }
   if (topic && topic !== 'all') { clauses.push("EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND EXISTS(SELECT 1 FROM json_each(p.topic_ids) j WHERE j.value=?))"); values.push(topic); }

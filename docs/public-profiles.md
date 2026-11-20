@@ -4,11 +4,16 @@ All active, signed-up accounts have public profiles regardless of `reader`,
 `author`, or `admin` role and regardless of whether they have published posts.
 The existing `/api/writers` routes and `/:username` URLs remain compatible.
 
-- Search/listing includes active members. Display name, current username and
+- The member directory and in-app profile search include only active authors and
+  administrators, including those with zero published posts. Readers are excluded
+  from both result rows and totals, even when their published posts match a filter.
+  The initial HTML directory uses the same rule. Display name, current username and
   public bio are searchable; topic/category filters still require matching
   published posts. Login email is never searched or returned.
 - Public ID/username lookup, SSR/social metadata, profile images and sitemaps use
-  the same active-account visibility rule. Disabled/deleted accounts stay hidden.
+  the active-account visibility rule regardless of role. Direct reader links and
+  subscriptions remain available; directory exclusion does not make a profile
+  private. Disabled/deleted accounts stay hidden.
 - Any signed-in member may subscribe to another active member, including a reader
   without posts. Self-subscription is rejected. Guest subscriptions require login.
   Repeated subscribe/unsubscribe requests are idempotent and Origin protected.
@@ -21,7 +26,7 @@ The existing `/api/writers` routes and `/:username` URLs remain compatible.
 - Search and the people menu use “프로필” / “멤버” to distinguish discoverable
   members from the author permission needed to publish posts.
 
-`npm run test:public-profiles` checks anonymous reader lookup/search, private
+`npm run test:public-profiles` checks author/admin-only discovery, anonymous reader lookup, private
 field/draft/media protection, reader-to-reader subscriptions, role/suspension
 handling, unchanged writing guards and the real React search/profile/login flow.
 `scripts/test-seo-usernames.mjs` additionally checks reader SSR and sitemap URLs.

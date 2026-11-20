@@ -30,7 +30,7 @@ export async function publicPage(request:Request,env:Env){
  }
  const [posts,writers]=await env.DB.batch([
   env.DB.prepare('SELECT '+postColumns+" FROM posts p JOIN auth_users u ON u.id=p.author_id WHERE p.status='published' AND p.kind='post' AND u.disabled=0 ORDER BY p.published_at DESC,p.id LIMIT 20"),
-  env.DB.prepare('SELECT '+writerColumns+' FROM auth_users u WHERE '+publicProfile+' ORDER BY u.created_at,u.id LIMIT 100'),
+  env.DB.prepare('SELECT '+writerColumns+' FROM auth_users u WHERE '+publicProfile+" AND u.role IN ('author','admin') ORDER BY u.created_at,u.id LIMIT 100"),
  ]);
  return json({type:'home',path:'/',posts:(posts.results as Post[]).map(simplePost),writers:(writers.results as Writer[]).map(simpleWriter)});
 }
