@@ -14,6 +14,7 @@ window.HTMLElement.prototype.scrollIntoView=function(){};
 window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
 window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new Event('close'));};
 globalThis.ResizeObserver=class{observe(){}disconnect(){}};
+globalThis.IntersectionObserver=class{observe(){}disconnect(){}};
 globalThis.requestAnimationFrame=window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame=window.cancelAnimationFrame.bind(window);
 const {createElement}=await import('react'),{createRoot}=await import('react-dom/client');

@@ -3,7 +3,8 @@ import {adsAllowed,loadAdFit,reserveAdUnit} from './adfit';
 import './adfit.css';
 
 let callbackId=0;
-export default function FeedAd({enabled=true,after}){
+export function isFeedAdPosition(index,count){return (index+1)%7===0||(count>0&&count<7&&index===count-1);}
+export default function FeedAd({enabled=true,after,variant='feed'}){
   const host=useRef(null),[failed,setFailed]=useState(false),[fits,setFits]=useState(true);
   useEffect(()=>{
     if(!enabled||failed||!adsAllowed()||!host.current)return;
@@ -34,7 +35,7 @@ export default function FeedAd({enabled=true,after}){
     return()=>{disposed=true;resize.disconnect();observer.disconnect();document.removeEventListener('visibilitychange',visibility);stop?.();};
   },[enabled,failed]);
   if(!enabled||failed||!adsAllowed())return null;
-  return <aside className="post feed-ad" ref={host} aria-label="광고" aria-hidden={!fits||undefined} data-ad-after={after} data-fit={fits}>
+  return <aside className={'post feed-ad'+(variant==='grid'?' feed-ad-grid':'')} ref={host} aria-label="광고" aria-hidden={!fits||undefined} data-ad-after={after} data-fit={fits}>
     <header className="post-header feed-ad-header"><span className="avatar feed-ad-avatar" aria-hidden="true">AD</span><div className="feed-ad-identity"><strong>광고</strong><span>Kakao AdFit</span></div><span className="feed-ad-label">AD</span></header>
     <div className="feed-ad-stage"/>
   </aside>;

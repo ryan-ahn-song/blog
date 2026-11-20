@@ -1,8 +1,10 @@
-# Home feed advertising
+# Home and search advertising
 
-Home inserts one labelled AdFit slot after each seven organic posts (7, 14, 21,
-28…), including across appended API pages. Ads are not stored as posts and do not
-change post totals, pagination, likes or bookmarks. Search, writer pages, saved
+Home and search insert one labelled AdFit slot after each seven organic posts
+(7, 14, 21, 28…), including across appended API pages. A non-empty list with fewer
+than seven posts gets one ad after its last post. Empty lists have no ads. Ads are
+not stored as posts and do not change totals, pagination, likes or bookmarks.
+Search uses a matching card within the latest/results grid. Writer pages, saved
 posts, subscriptions and the article reader do not display ads.
 
 The publisher account's Web inventory supports fixed banners. The selected
@@ -26,8 +28,8 @@ configuration, not credentials. Do not call `setKakaoAccountId` or attach blog
 account IDs, email, draft content, or application credentials to ad requests.
 
 The media was **pending review** when configured. Real inventory depends on
-Kakao's approval and availability. Fewer than seven actual posts produces no
-ad request; do not create dummy posts or synthetic impressions to trigger review.
+Kakao's approval and availability. No actual posts produces no ad request; do not
+create dummy posts or synthetic impressions to trigger review.
 
 ## Lifecycle and safety
 
@@ -40,7 +42,7 @@ ad request; do not create dummy posts or synthetic impressions to trigger review
   one of the three distinct IDs. Destroy and release an offscreen ad before its
   ID is used by another slot; waiting slots do not make duplicate requests.
 - No custom periodic refresh. Destroy ads when the tab is hidden, a reader or
-  account dialog opens, navigation leaves Home, or the component unmounts.
+  account dialog opens, navigation leaves Home/search, or the component unmounts.
 - Each creative is rendered by the official SDK with the issued dimensions.
   No publisher iframe wrapper: AdFit's policy disallows requesting ads inside
   publisher-created iframes. SDK-created creative frames remain untouched.
@@ -49,14 +51,14 @@ ad request; do not create dummy posts or synthetic impressions to trigger review
 - CSP allows named Kakao SDK/request/frame hosts; it retains disabled inline
   script attributes, `unsafe-eval` exclusion and frame-ancestor protection.
   Standalone OAuth consent does not allow the advertising SDK.
-- Privacy document version `2026-11-20.2` discloses advertising data processing,
+- Privacy document version `2026-11-20.3` discloses advertising data processing,
   DNT/GPC support, cookie controls and Kakao's privacy/advertising links.
 
 ## Verification
 
 `npm run test:adfit` exercises the real App and SDK lifecycle with stubbed
 creatives. It verifies cadence across pagination, no replacement of posts,
-Home-only placement, single SDK loading, unit leasing/destruction/reuse, no-fill,
+Home/search placement and minimum-one/empty-list behavior, single SDK loading, unit leasing/destruction/reuse, no-fill,
 hidden tabs, DNT, narrow slots and CSP. It makes no real ad calls or clicks.
 
 Sources: [Web SDK](https://kakaobusiness.gitbook.io/main/partner/adfit/adfit-sdk/web-sdk),

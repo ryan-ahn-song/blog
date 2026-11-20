@@ -43,7 +43,7 @@ export default {
       result.headers.set('Cache-Control','private, no-store');
       if(canonical)result.headers.set('Link','<'+canonical+'>; rel="canonical"');
       // The shared SPA can enter Home without reloading. The standalone OAuth
-      // consent shell stays strict; the component mounts only in the Home feed.
+      // consent shell stays strict; ads mount only in Home/search post lists.
       const ads=url.pathname!=='/connect';
       const scripts=ads?' https://t1.kakaocdn.net https://serv.ds.kakao.com https://display.ad.daum.net':'';
       const connections=ads?' https://serv.ds.kakao.com https://display.ad.daum.net https://stat.ad.daum.net https://track.ad.daum.net https://t1.kakaocdn.net':'';
