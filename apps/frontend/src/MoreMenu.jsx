@@ -23,6 +23,7 @@ export default function MoreMenu({authChecking,user,onSettings,onLogin,onAdmin,o
       {user?<><p className="more-menu-account"><strong>{user.name}</strong><span>{user.email}</span></p><button role="menuitem" onClick={()=>choose(()=>onSettings('account'))}>계정 및 설정<span>↗</span></button></>:authChecking?<p role="status" className="settings-note">로그인 상태를 확인하고 있어요.</p>:<button role="menuitem" onClick={()=>choose(onLogin)}>로그인</button>}
       {user?.role==='reader'&&<button role="menuitem" onClick={()=>choose(()=>onSettings('apply'))}>작성자 신청하기</button>}
       <button role="menuitem" onClick={()=>choose(()=>onSettings('display'))}>화면 설정</button>
+      <button role="menuitem" onClick={()=>choose(()=>onSettings('mcp'))}>MCP 연결 안내</button>
       <button role="menuitem" onClick={()=>choose(()=>onSettings('help'))}>도움말 및 피드백</button>
       <button role="menuitem" onClick={()=>choose(()=>onSettings('legal'))}>약관 및 개인정보처리방침</button>
       {user?.role==='admin'&&<><hr/><button role="menuitem" onClick={()=>choose(onAdmin)}>멤버 관리<span>관리자</span></button></>}

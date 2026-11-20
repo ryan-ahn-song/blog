@@ -2,6 +2,8 @@
 
 Endpoint: **`https://21st-ark.dev/mcp`**, Streamable HTTP. No API key or blog cookie should be copied into an AI application. Connect with an OAuth-capable remote MCP client; the browser opens the blog's account sign-in and explicit consent page.
 
+더 보기 → **MCP 연결 안내** is available to guests and all account roles. It explains endpoint copying, OAuth sign-in and consent, draft review, role requirements, connection management and troubleshooting. Readers can open the author-application form; authors can jump to account connection settings.
+
 ## Capabilities and publication boundary
 
 | Tool | Required scope | Operation |

@@ -22,13 +22,22 @@ const mf=new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:fileUR
 try{
  const db=await mf.getD1Database('DB'),cookies={};
  for(const file of (await readdir(new URL('../apps/backend/migrations',import.meta.url))).filter(file=>file.endsWith('.sql')).sort())for(const sql of (await readFile(new URL('../apps/backend/migrations/'+file,import.meta.url),'utf8')).split(';').filter(sql=>sql.trim()))await db.prepare(sql).run();
- for(const [id,role] of [['owner','author'],['other','author'],['reader','reader']]){
+ for(const [id,role] of [['owner','author'],['other','author'],['reader','reader'],['web-author','author'],['web-admin','admin'],['web-disabled','author']]){
   await db.prepare('INSERT INTO auth_users(id,email,name,role,username,username_key,username_confirmed) VALUES(?,?,?,?,?,?,1)').bind(id,id+'@example.invalid',id,role,'Mcp'+id,'mcp'+id).run();
   const token=randomBytes(32).toString('hex');cookies[id]='__Host-ark_session='+token;await db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,last_seen) VALUES(?,?,?,unixepoch())').bind(hash(token),id,Math.floor(Date.now()/1000)+3600).run();
  }
  const call=(path,{method='GET',body,actor,cookie='',token,type='application/json',headers={},...rest}={})=>mf.dispatchFetch(origin+path,{method,redirect:'manual',headers:{Origin:origin,'Content-Type':type,...((actor||cookie)?{Cookie:[actor?cookies[actor]:'',cookie].filter(Boolean).join('; ')}:{}),...(token?{Authorization:'Bearer '+token}:{}),...headers},...(body===undefined?{}:{body:typeof body==='string'||body instanceof Uint8Array?body:JSON.stringify(body)}),...rest});
  const expect=async(response,status)=>{assert.equal(response.status,status,(await response.clone().text()).slice(0,1500));return response;};
  const form=(path,fields)=>call(path,{method:'POST',type:'application/x-www-form-urlencoded',body:new URLSearchParams(fields).toString()});
+ const webForm={title:'Permission check',summary:'Isolated fixture',body:'Permission check body',category:'tech',body_format:'markdown'};
+ await db.prepare("UPDATE auth_users SET disabled=1 WHERE id='web-disabled'").run();
+ for(const status of ['draft','published'])for(const [actor,expected] of [[undefined,401],['reader',403],['web-disabled',401]])await expect(await call('/api/posts',{method:'POST',actor,body:{...webForm,status,role:'admin',author_id:'owner'}}),expected);
+ for(const actor of ['web-author','web-admin']){
+  const created=await (await expect(await call('/api/posts',{method:'POST',actor,body:{...webForm,status:'published',author_id:'owner'}}),201)).json();assert.equal(created.post.author_id,actor,'Client-supplied owner cannot impersonate another author');
+  for(const method of ['PUT','DELETE'])await expect(await call('/api/posts/'+created.post.id,{method,actor:'reader',body:{...webForm,status:'published',revision:1,role:'admin'}}),403);
+  await expect(await call('/api/posts/'+created.post.id,{method:'PUT',actor:'other',body:{...webForm,status:'published',revision:1}}),403,'An author cannot modify another author’s post');
+  await db.prepare('DELETE FROM posts WHERE id=?').bind(created.post.id).run();
+ }
  const metadata=await (await expect(await call('/.well-known/oauth-authorization-server'),200)).json();assert.equal(metadata.authorization_endpoint,origin+'/oauth/authorize');assert.equal(metadata.token_endpoint,origin+'/oauth/token');assert(metadata.code_challenge_methods_supported.includes('S256'));assert(!metadata.scopes_supported.includes('posts:publish'));
  const challenge=await expect(await call('/mcp',{method:'POST',body:{jsonrpc:'2.0',id:1,method:'tools/list'}}),401);assert.match(challenge.headers.get('WWW-Authenticate'),/oauth-protected-resource\/mcp/);
  assert.equal((await (await call('/.well-known/oauth-protected-resource/mcp')).json()).resource,origin+'/mcp');
@@ -109,6 +118,14 @@ try{
  assert((await tool('update_draft',{...edit,revision:published.post.revision,request_key:'edit-public-001'})).isError,'Published content is immutable via MCP');
  await expect(await call('/api/posts/'+post.id,{method:'PUT',token:main.tokens.access_token,body:{...draft,status:'published',revision:published.post.revision}}),401,'MCP token is never a browser session');
  assert.equal((await tool('get_analytics')).structuredContent.owner_id,'owner');
+ const adminConnection=await connect('web-admin');assert((await tool('get_post',{post_id:post.id},adminConnection.tokens.access_token)).isError,'MCP administrator is still restricted to their own data');
+ await db.prepare("UPDATE auth_users SET role='reader' WHERE id='owner'").run();
+ for(const [name,args] of [['create_draft',{...draft,request_key:'role-demoted-001'}],['upload_image',{request_key:'role-demoted-image',base64:image.toString('base64'),content_type:'image/png'}]]){const denied=await tool(name,args);assert(denied.isError);assert.equal(JSON.parse(denied.content[0].text).status,403,'Existing write consent cannot override a downgraded account role');}
+ await expect(await call('/api/posts',{method:'POST',actor:'owner',body:{...webForm,status:'published'}}),403);
+ await db.prepare("UPDATE auth_users SET role='author' WHERE id='owner'").run();
+ const readerFlow=await begin();const readerDetails=await (await call('/api/mcp/authorization/'+readerFlow.flow,{actor:'reader',cookie:readerFlow.cookie})).json();assert(!readerDetails.available_scopes.includes('posts:write'));
+ await expect(await call('/api/mcp/authorization/'+readerFlow.flow,{method:'POST',actor:'reader',cookie:readerFlow.cookie,body:{approve:true,user_id:'reader',scopes:['account:read','posts:write']}}),400,'Reader cannot forge a write-scope consent');
+
  const low=await connect('reader',{scopes:'account:read offline_access',granted:['account:read','offline_access']});const forbidden=await call('/mcp',{method:'POST',token:low.tokens.access_token,headers:{Accept:'application/json, text/event-stream'},body:{jsonrpc:'2.0',id:99,method:'tools/call',params:{name:'create_draft',arguments:draft}}});assert.equal(forbidden.status,403);assert.match(forbidden.headers.get('WWW-Authenticate'),/insufficient_scope/);
  const refresh=await (await expect(await form('/oauth/token',{grant_type:'refresh_token',client_id:client,refresh_token:main.tokens.refresh_token,resource:origin+'/mcp'}),200)).json();assert.notEqual(refresh.access_token,main.tokens.access_token);assert.notEqual(refresh.refresh_token,main.tokens.refresh_token);
  assert.equal((await tool('get_account',{},refresh.access_token)).structuredContent.user.id,'owner');
