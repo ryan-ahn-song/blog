@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { HttpError,json,readBody } from './http';
-import { type AuthEnv,currentUser,requireUser,checkOrigin,limited,digest } from './session';
+import { type UserRow,type AuthEnv,currentUser,checkOrigin,limited,digest } from './session';
 
 type Label={id:string;writer_id:string;kind:'category'|'tag';name:string;post_count?:number};
 export async function handleTaxonomy(request:Request,env:AuthEnv){
+  if(request.method!=='GET')checkOrigin(request);
+  return taxonomyForActor(request,env,await currentUser(request,env));
+}
+export async function taxonomyForActor(request:Request,env:AuthEnv,actor:UserRow|null){
   const url=new URL(request.url),match=url.pathname.match(/^\/api\/writers\/([\w-]+)\/taxonomy(?:\/([\w-]+))?$/)!;
   const writerId=match[1],labelId=match[2];
   if(request.method==='GET'&&!labelId){
-    const actor=await currentUser(request,env),manage=url.searchParams.get('scope')==='manage';
+    const manage=url.searchParams.get('scope')==='manage';
     if(manage&&(!actor||(actor.id!==writerId&&actor.role!=='admin')))throw new HttpError(actor?403:401,'본인의 분류와 태그만 관리할 수 있습니다.');
     const writer=await env.DB.prepare("SELECT id FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR u.id=? OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(writerId,actor?.id??'').first();
     if(!writer)throw new HttpError(404,'필자를 찾을 수 없습니다.');
@@ -16,7 +20,8 @@ export async function handleTaxonomy(request:Request,env:AuthEnv){
     return json({writer_id:writerId,categories:rows.results.filter(row=>row.kind==='category'),tags:rows.results.filter(row=>row.kind==='tag')});
   }
   if(!((request.method==='POST'&&!labelId)||(['PATCH','DELETE'].includes(request.method)&&labelId)))return json({error:'지원하지 않는 요청입니다.'},405);
-  checkOrigin(request);const actor=await requireUser(request,env,['author','admin']);
+  if(!actor)throw new HttpError(401,'로그인이 필요합니다.');
+  if(!['author','admin'].includes(actor.role))throw new HttpError(403,'이 작업을 할 권한이 없습니다.');
   if(actor.id!==writerId)throw new HttpError(403,'본인의 분류와 태그만 변경할 수 있습니다.');
   if(await limited(env.DB,digest('taxonomy:'+actor.id),120))throw new HttpError(429,'변경 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   const existing=labelId?await env.DB.prepare('SELECT id,writer_id,kind,name FROM writer_labels WHERE id=? AND writer_id=?').bind(labelId,writerId).first<Label>():null;

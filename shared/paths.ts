@@ -12,7 +12,7 @@ export function viewUrl(view:string,{query='',category='all',topicId='all',editI
   return viewPath(view)+(params.size?'?'+params:'');
 }
 export const fallbackUsername=(id:string)=>'user-'+id;
-export const writerPath=(writer:WriterLink)=>{const name=writer.username||fallbackUsername(writer.id??'');return '/'+(viewUsernames.includes(name.normalize('NFKC').toLowerCase())?'@':'')+encodeURIComponent(name);};
+export const writerPath=(writer:WriterLink)=>{const name=writer.username||fallbackUsername(writer.id??'');return '/'+([...viewUsernames,'mcp','oauth','connect'].includes(name.normalize('NFKC').toLowerCase())?'@':'')+encodeURIComponent(name);};
 export const postPath=(post:PostLink)=>writerPath(post.writer??{id:post.author_id,username:post.author_username})+'/posts/'+encodeURIComponent(post.id);
 type PageRoute={type:'view';view:AppView}|{type:'post';id:string;username?:string;legacy?:boolean}|{type:'writer';id?:string;username?:string;legacy?:boolean}|{type:'missing'};
 export function pageRoute(pathname='/',hash=''):PageRoute{

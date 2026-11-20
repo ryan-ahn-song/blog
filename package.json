@@ -21,6 +21,7 @@
     "test:render": "node scripts/check-render.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
     "test:profile-media": "npm run build:backend && node scripts/test-profile-media.mjs",
+    "test:mcp": "npm run build:backend && node scripts/test-mcp.mjs && node scripts/test-mcp-ui.mjs",
     "test:auth": "npm run build:backend && node --experimental-strip-types scripts/test-auth.mjs",
     "test:features": "npm run build:backend && node scripts/test-features.mjs",
     "db:check": "npm run db:check -w @21st-ark/backend",
@@ -38,6 +39,7 @@
     "test:security-performance": "npm run build:backend && node scripts/test-security-performance.mjs && node scripts/test-reader-cache.mjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
     "concurrently": "^9.2.1",
     "jsdom": "^29.1.1"
   }

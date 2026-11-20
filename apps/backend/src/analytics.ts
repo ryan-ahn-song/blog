@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { json, readBody, HttpError } from './http';
-import { type AuthEnv, checkOrigin, currentUser, requireUser, readCookie, cookie, digest, limited, now } from './session';
+import { type UserRow, type AuthEnv, checkOrigin, currentUser, requireUser, readCookie, cookie, digest, limited, now } from './session';
 
 const day=(timestamp:number)=>new Date((timestamp+9*3600)*1000).toISOString().slice(0,10);
 const midnight=(timestamp:number)=>Math.floor((timestamp+9*3600)/86400)*86400-9*3600;
@@ -22,9 +22,11 @@ export async function recordRead(request:Request,env:AuthEnv){
   return json({recorded:true},200,actor?{}:{'Set-Cookie':cookie(request,'visitor',token,30*86400)});
 }
 
-export async function authorDashboard(request:Request,env:AuthEnv){
+export async function authorDashboard(request:Request,env:AuthEnv){return dashboardForActor(request,env,await requireUser(request,env,['author','admin']));}
+export async function dashboardForActor(request:Request,env:AuthEnv,actor:UserRow){
+  if(!['author','admin'].includes(actor.role))throw new HttpError(403,'이 작업을 할 권한이 없습니다.');
   if(request.method!=='GET')return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'GET'});
-  const actor=await requireUser(request,env,['author','admin']),params=new URL(request.url).searchParams;
+  const params=new URL(request.url).searchParams;
   const days=Number(params.get('days')??28),status=params.get('status')??'all',sort=params.get('sort')??'updated',q=(params.get('q')??'').trim().slice(0,100);
   if(![7,28,90].includes(days)||!['all','draft','published'].includes(status)||!['updated','readers','bookmarks'].includes(sort))throw new HttpError(400,'조회 조건을 확인해 주세요.');
   const page=Math.max(0,Math.min(100000,Number(params.get('page'))||0))|0,time=now(),start=midnight(time)-(days-1)*86400,startDay=day(start),sparkStart=day(midnight(time)-13*86400);

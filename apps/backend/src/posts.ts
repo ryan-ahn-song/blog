@@ -2,7 +2,7 @@ import { checkImageDimensions } from './image-validation';
 import { reserveUpload } from './uploads';
 import { randomUUID } from 'node:crypto';
 import { json, readBody, HttpError } from './http';
-import { type AuthEnv, requireUser, checkOrigin, currentUser, now, limited, digest, local } from './session';
+import { type UserRow, type AuthEnv, requireUser, checkOrigin, currentUser, now, limited, digest, local } from './session';
 import { topicsForPost } from './catalog';
 import { mediaUrl,postImageKey,profileImageKey,inlineImageKey,mediaContentType } from './media';
 import { documentFields } from './document';
@@ -46,9 +46,16 @@ async function validateBodyImages(body:Record<string,unknown>,request:Request,en
   return keys;
 }
 export async function handlePosts(request: Request, env: Env) {
+  if(request.method!=='GET')checkOrigin(request);
+  return postsForActor(request,env,await currentUser(request,env));
+}
+function writer(actor:UserRow|null):UserRow {if(!actor)throw new HttpError(401,'로그인이 필요합니다.');if(!['author','admin'].includes(actor.role))throw new HttpError(403,'이 작업을 할 권한이 없습니다.');return actor;}
+// Only trusted server adapters supply this actor; HTTP bodies/headers cannot select it.
+export async function postsForActor(request: Request, env: Env, actor:UserRow|null, newId?:string, draftOnly=false, mutationToken?:string) {
+  if(draftOnly&&!['GET','POST','PUT'].includes(request.method))throw new HttpError(403,'MCP는 초안 조회와 저장만 가능합니다.');
   const url = new URL(request.url), id = url.pathname.match(/^\/api\/posts\/([\w-]+)$/)?.[1];
   if (request.method === 'GET') {
-    const actor=await currentUser(request,env), actorId=actor?.id??'';
+    const actorId=actor?.id??'';
     if (id) {
       const p = await env.DB.prepare(select + ' WHERE p.id=?').bind(actorId,actorId,id).first<PostRow>();
       if (!p) throw new HttpError(404, '포스트를 찾을 수 없습니다.');
@@ -61,14 +68,14 @@ export async function handlePosts(request: Request, env: Env) {
     const mine = url.searchParams.get('mine') === '1';
     const bookmarked=url.searchParams.get('bookmarked')==='1';
     const subscribed=url.searchParams.get('subscribed')==='1';
-    if (mine) await requireUser(request,env,['author','admin']);
+    if (mine) writer(actor);
     if (bookmarked&&!actor) throw new HttpError(401,'저장한 포스트를 보려면 로그인해 주세요.');
     if(subscribed&&!actor)throw new HttpError(401,'구독한 포스트를 보려면 로그인해 주세요.');
     const clauses:string[]=[], values:(string|number)[]=[];
     const kind=url.searchParams.get('kind')??(mine||bookmarked||subscribed?'all':'post');
     if(!['post','notice','all'].includes(kind))throw new HttpError(400,'포스트 종류를 확인해 주세요.');
     if(kind!=='all'){clauses.push('p.kind=?');values.push(kind);}
-    if(mine){clauses.push('p.author_id=?');values.push(actorId);}else clauses.push("p.status='published' AND u.disabled=0");
+    if(mine){clauses.push('p.author_id=?');values.push(actorId);const status=url.searchParams.get('status');if(status&&status!=='all'){if(!['draft','published'].includes(status))throw new HttpError(400,'상태를 확인해 주세요.');clauses.push('p.status=?');values.push(status);}}else clauses.push("p.status='published' AND u.disabled=0");
     if(bookmarked){clauses.push('EXISTS(SELECT 1 FROM post_bookmarks b WHERE b.post_id=p.id AND b.user_id=?)');values.push(actorId);}
     if(subscribed){clauses.push("u.disabled=0 AND EXISTS(SELECT 1 FROM writer_subscriptions s WHERE s.writer_id=p.author_id AND s.subscriber_id=?)");values.push(actorId);}
     const category=url.searchParams.get('category'),topic=url.searchParams.get('topic'),author=url.searchParams.get('author'),q=(url.searchParams.get('q')??'').trim().slice(0,100);
@@ -86,45 +93,44 @@ export async function handlePosts(request: Request, env: Env) {
     return json({ posts: rows.results.map(p => publicPost(p, env, request)), total: total?.total ?? 0, page });
   }
   if(request.method==='DELETE'&&id){
-    checkOrigin(request);
-    const actor=await requireUser(request,env,['author','admin']);
+    const owner=writer(actor);
     const body=await readBody(request);
     if(typeof body.revision!=='number'||!Number.isSafeInteger(body.revision))throw new HttpError(400,'포스트 버전을 확인해 주세요.');
     const existing=await env.DB.prepare('SELECT author_id,revision FROM posts WHERE id=?').bind(id).first<{author_id:string;revision:number}>();
     if(!existing)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
-    if(existing.author_id!==actor.id&&actor.role!=='admin')throw new HttpError(403,'본인의 포스트만 삭제할 수 있습니다.');
+    if(existing.author_id!==owner.id&&owner.role!=='admin')throw new HttpError(403,'본인의 포스트만 삭제할 수 있습니다.');
     const removed=await env.DB.prepare('DELETE FROM posts WHERE id=? AND revision=? RETURNING id').bind(id,body.revision).first();
     if(!removed)throw new HttpError(409,'다른 창에서 수정한 포스트입니다. 새로고침한 뒤 다시 삭제해 주세요.');
     return json({deleted:true,id});
   }
   if (!['POST', 'PUT'].includes(request.method) || (request.method === 'POST' && id) || (request.method === 'PUT' && !id)) return json({error:'지원하지 않는 요청입니다.'},405);
-  checkOrigin(request);
-  const user = await requireUser(request, env, ['author', 'admin']);
+  const user = writer(actor);
   if (await limited(env.DB, digest('write:' + user.id), 100)) throw new HttpError(429, '저장 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   const b = await readBody(request, 1500000);
   if (typeof b.title !== 'string' || !b.title.trim() || b.title.trim().length > 160 || typeof b.body !== 'string' || !b.body.trim() || b.body.length > 80000 || typeof b.summary !== 'string' || b.summary.length > 280 || typeof b.category!=='string' || !['tech','life'].includes(b.category) || typeof b.status!=='string' || !['draft','published'].includes(b.status)) throw new HttpError(400, '제목(160자), 소개(280자), 본문(80,000자)을 확인해 주세요.');
   if(b.kind!==undefined&&(typeof b.kind!=='string'||!['post','notice'].includes(b.kind)))throw new HttpError(400,'포스트 또는 공지를 선택해 주세요.');
   const document=documentFields(b);
-  const mediaKeys=await validateBodyImages(b,request,env,user);
+  const mediaKeys=await validateBodyImages(b,request,env,draftOnly?{...user,role:'author'}:user);
   if(document.document)document.document=JSON.stringify(b.body_doc);
   const topicIds=await topicsForPost(env.DB,b.category,b.topic_ids);
   let imageKey: string | null = null;
   if (b.image_key !== null && b.image_key !== undefined && b.image_key !== '') {
     if (typeof b.image_key !== 'string' || !/^posts\/[\w-]+\/[\w-]+\.(jpg|png|webp)$/.test(b.image_key)) throw new HttpError(400, '대표 이미지를 다시 업로드해 주세요.');
     const owner = b.image_key.split('/')[1];
-    if (owner !== user.id && user.role !== 'admin') throw new HttpError(403, '본인이 업로드한 이미지를 사용해 주세요.');
+    if (owner !== user.id && (draftOnly||user.role !== 'admin')) throw new HttpError(403, '본인이 업로드한 이미지를 사용해 주세요.');
     if (!await env.MEDIA.head(b.image_key)) throw new HttpError(400, '대표 이미지가 존재하지 않습니다.');
     imageKey = b.image_key;
   }
-  const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision,kind FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number;kind:'post'|'notice'}>():null;
+  const existing=id?await env.DB.prepare('SELECT author_id,published_at,revision,kind,status FROM posts WHERE id=?').bind(id).first<{author_id:string;published_at:number|null;revision:number;status:string;kind:'post'|'notice'}>():null;
   if(id&&!existing)throw new HttpError(404,'포스트를 찾을 수 없습니다.');
   if(existing&&existing.author_id!==user.id&&user.role!=='admin')throw new HttpError(403,'본인의 포스트만 수정할 수 있습니다.');
   if(id&&(typeof b.revision!=='number'||!Number.isSafeInteger(b.revision)))throw new HttpError(400,'포스트 버전을 확인해 주세요.');
+  if(draftOnly&&(b.status!=='draft'||(existing&&existing.status!=='draft')))throw new HttpError(403,'MCP는 초안만 저장할 수 있습니다. 공개 포스트는 웹에서 직접 수정해 주세요.');
   const kind=b.kind??existing?.kind??'post';
-  const ownerId=existing?.author_id??user.id,labels=await postLabels(env.DB,ownerId,b,id),postId=id??randomUUID(),token=randomUUID();
+  const ownerId=existing?.author_id??user.id,labels=await postLabels(env.DB,ownerId,b,id),postId=id??newId??randomUUID(),token=mutationToken??randomUUID();
   const write=!id?
     env.DB.prepare('INSERT INTO posts(id,author_id,title,summary,body,category,image_key,status,published_at,topic_ids,body_format,body_doc,taxonomy_write_token,kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(postId,user.id,b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,b.status==='published'?now():null,JSON.stringify(topicIds),document.format,document.document,token,kind):
-    env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,kind=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,kind,id,b.revision);
+    env.DB.prepare('UPDATE posts SET title=?,summary=?,body=?,category=?,image_key=?,status=?,updated_at=?,published_at=?,topic_ids=?,body_format=?,body_doc=?,taxonomy_write_token=?,kind=?,revision=revision+1 WHERE id=? AND revision=?'+(draftOnly?" AND status='draft'":'')+' RETURNING id').bind(b.title.trim(),b.summary.trim(),b.body,b.category,imageKey,b.status,now(),b.status==='published'?existing!.published_at??now():existing!.published_at,JSON.stringify(topicIds),document.format,document.document,token,kind,id,b.revision);
   if(imageKey)mediaKeys.add(imageKey);
   const mediaWrites=[env.DB.prepare('DELETE FROM post_media WHERE post_id=? AND EXISTS(SELECT 1 FROM posts WHERE id=? AND taxonomy_write_token=?)').bind(postId,postId,token),...[...mediaKeys].map(key=>env.DB.prepare('INSERT INTO post_media(post_id,media_key) SELECT id,? FROM posts WHERE id=? AND taxonomy_write_token=?').bind(key,postId,token))];
   const changes=await env.DB.batch([write,...mediaWrites,...labelWrites(env.DB,postId,token,labels)]);
@@ -173,7 +179,12 @@ export async function handleMedia(request: Request, env: Env) {
   const chunks: Uint8Array[] = []; let size = 0;
   while (true) { const {value,done} = await reader.read(); if (done) break; size += value.byteLength; if(size > 8 * 1024 * 1024) { await reader.cancel(); throw new HttpError(413,'이미지는 8MB 이하로 올려 주세요.'); } chunks.push(value); }
   const data = new Uint8Array(size); let offset = 0; for(const chunk of chunks) { data.set(chunk,offset); offset+=chunk.byteLength; }
-  const type = request.headers.get('Content-Type')?.split(';')[0];
+  return storeImage(request,env,user,purpose,data,request.headers.get('Content-Type')?.split(';')[0]);
+}
+export async function storeImage(request:Request,env:Env,user:UserRow,purpose:string,data:Uint8Array,type:string|undefined,objectId?:string){
+  if(user.disabled||!['post','avatar','cover'].includes(purpose)||(purpose==='post'&&!['author','admin'].includes(user.role)))throw new HttpError(403,'이미지를 업로드할 권한이 없습니다.');
+  const size=data.byteLength;
+  if(!size||size>8*1024*1024)throw new HttpError(413,'이미지는 8MB 이하로 올려 주세요.');
   const png = data.length > 8 && [137,80,78,71,13,10,26,10].every((v,i)=>data[i]===v);
   const jpg = data.length > 3 && data[0]===255 && data[1]===216 && data[2]===255;
   const webp = data.length > 12 && new TextDecoder().decode(data.slice(0,4))==='RIFF' && new TextDecoder().decode(data.slice(8,12))==='WEBP';
@@ -181,7 +192,7 @@ export async function handleMedia(request: Request, env: Env) {
   const ext = purpose!=='post'&&type==='image/gif'&&gif?'gif':type==='image/png' && png ? 'png' : type==='image/jpeg' && jpg ? 'jpg' : type==='image/webp' && webp ? 'webp' : null;
   if (!ext) throw new HttpError(415, purpose==='post'?'JPG, PNG, WebP 이미지만 올릴 수 있습니다.':'JPG, PNG, WebP, GIF 이미지만 올릴 수 있습니다.');
   checkImageDimensions(data,ext);
-  const key = (purpose==='post'?'posts/'+user.id+'/':'profiles/'+user.id+'/'+purpose+'-')+randomUUID()+'.'+ext;
+  const key = (purpose==='post'?'posts/'+user.id+'/':'profiles/'+user.id+'/'+purpose+'-')+(objectId??randomUUID())+'.'+ext;
   await reserveUpload(env,user.id,key,size);
   try{await env.MEDIA.put(key,data,{httpMetadata:{contentType:type!,cacheControl:'public, max-age=31536000, immutable'},customMetadata:{author:user.id}});}catch(error){await env.DB.prepare('DELETE FROM media_uploads WHERE key=?').bind(key).run();throw error;}
   if(!await env.DB.prepare('SELECT 1 FROM auth_users WHERE id=? AND disabled=0').bind(user.id).first()){await env.MEDIA.delete(key);throw new HttpError(401,'계정 상태가 변경되어 업로드를 취소했습니다.');}

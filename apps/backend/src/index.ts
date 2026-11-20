@@ -20,15 +20,27 @@ export default {
       env.DB.batch(['auth_pending_signups','auth_login_limits','auth_sessions','auth_oauth_states','auth_github_states'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE expires_at<=unixepoch()'))),
       env.DB.prepare('DELETE FROM account_security_events WHERE created_at<unixepoch()-7776000').run(),
       env.DB.prepare('DELETE FROM reading_history WHERE read_at<unixepoch()-7776000').run(),
+      env.DB.prepare('DELETE FROM mcp_oauth_storage WHERE expires_at<=unixepoch()').run(),
+      env.DB.prepare('DELETE FROM mcp_flows WHERE expires_at<=unixepoch()').run(),
+      env.DB.prepare('DELETE FROM mcp_operations WHERE expires_at<=unixepoch()').run(),
+      env.DB.prepare('DELETE FROM mcp_audit WHERE created_at<unixepoch()-7776000').run(),
+      env.DB.prepare('DELETE FROM mcp_connections WHERE expires_at<unixepoch()-7776000').run(),
+      env.DB.prepare('DELETE FROM mcp_locks WHERE expires_at<=unixepoch()').run(),
     ]));
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx:ExecutionContext): Promise<Response> {
     const path = new URL(request.url).pathname;
     try {
+      if(path==='/mcp')return await (await import('./mcp')).handleMcp(request,env);
+      if(path.startsWith('/oauth/')||path.startsWith('/.well-known/oauth-')||path.startsWith('/api/mcp/'))return await (await import('./mcp-oauth')).handleMcpOAuth(request,env,ctx);
       if(path==='/api/seo/page')return await publicPage(request,env);
       if(path==='/api/seo/sitemap')return await sitemapData(request,env);
       if(/^\/api\/social\/(posts|writers)\/[\w-]+\/image$/.test(path))return await socialImage(request,env);
-      if (path.startsWith('/api/auth/')) return await handleAuth(request, env);
+      if (path.startsWith('/api/auth/')) {
+        const response=await handleAuth(request, env);
+        if((/^\/api\/auth\/(google|github)$/.test(path)&&new URL(request.url).searchParams.has('mcp_request'))||(/^\/api\/auth\/callback\/(google|github)$/.test(path)&&request.headers.get('Cookie')?.includes('ark_mcp_signin_')))return await (await import('./mcp-oauth')).mcpLoginReturn(request,env,response);
+        return response;
+      }
       if(path==='/api/writer-applications'||/^\/api\/admin\/writer-applications(?:\/[\w-]+)?$/.test(path))return await handleApplications(request,env);
       if (path.startsWith('/api/admin/')) return await handleAdmin(request, env);
       if(/^\/api\/writers\/[\w-]+\/taxonomy(?:\/[\w-]+)?$/.test(path))return await handleTaxonomy(request,env);
@@ -44,7 +56,7 @@ export default {
       if (path === '/api/trending') return await handleTrending(request,env);
       if(path==='/api/subscriptions'||/^\/api\/writers\/[\w-]+\/subscription$/.test(path))return await handleSubscriptions(request,env);
     } catch (error) {
-      if (error instanceof HttpError) return json({error:error.message},error.status);
+      if (error instanceof HttpError) return json({error:error.message},error.status,error.status===503?{'Retry-After':'3'}:{});
       console.error('API request failed');
       return json({error:'요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'},503);
     }

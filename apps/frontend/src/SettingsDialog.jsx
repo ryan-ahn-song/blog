@@ -1,5 +1,6 @@
 import AccountControls from './AccountControls';
 import UsernameSettings from './UsernameSettings';
+import McpConnections from './McpConnections';
 import { WriterApplicationForm } from './WriterApplications';
 import { LegalDocuments } from './SignupDialog';
 import { useEffect, useRef, useState } from 'react';
@@ -9,7 +10,7 @@ const defaults={font:'15',width:'720',motion:false};
 function loadPreferences(){try{const value=JSON.parse(localStorage.getItem('ark-reading-preferences'));return {font:['15','17','19'].includes(value?.font)?value.font:defaults.font,width:['600','720','900'].includes(value?.width)?value.width:defaults.width,motion:value?.motion===true};}catch{return defaults;}}
 
 export default function SettingsDialog({section,onClose,user,onLogin,onRoleChanged,onDeleted,onProfileUpdated}) {
-  const [accountBusy,setAccountBusy]=useState(false),[usernameBusy,setUsernameBusy]=useState(false);
+  const [accountBusy,setAccountBusy]=useState(false),[usernameBusy,setUsernameBusy]=useState(false),[mcpBusy,setMcpBusy]=useState(false);
   const dialog=useRef(null),[account,setAccount]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[preferences,setPreferences]=useState(loadPreferences),[copied,setCopied]=useState(false),[preferenceError,setPreferenceError]=useState('');
   useEffect(()=>{if(section&&!dialog.current.open)dialog.current.showModal();else if(!section&&dialog.current.open)dialog.current.close();setCopied(false);},[section]);
   useEffect(()=>{
@@ -25,13 +26,14 @@ export default function SettingsDialog({section,onClose,user,onLogin,onRoleChang
   const current=account?.user.id===user?.id?account:null;
   const titles={account:'계정 및 설정',display:'화면 설정',help:'도움말 및 피드백',legal:'약관 및 개인정보처리방침',apply:'작성자 신청하기'};
   async function copyFeedback(){try{await navigator.clipboard.writeText('21st ARK 피드백\n페이지: '+location.origin+location.pathname+location.hash+'\n\n어떤 문제가 있었나요?\n\n기대한 동작:\n\n재현 순서:\n');setCopied(true);}catch{setError('내용을 복사하지 못했어요. 문제가 발생한 화면과 재현 순서를 적어 주세요.');}}
-  return <dialog ref={dialog} className="auth-dialog settings-dialog" aria-labelledby="settings-title" onCancel={event=>{if(accountBusy||usernameBusy)event.preventDefault();else onClose();}} onClose={onClose}>
-    <button className="auth-close" aria-label="설정 닫기" disabled={accountBusy||usernameBusy} onClick={onClose}>×</button><h2 id="settings-title">{titles[section]??'설정'}</h2>
+  return <dialog ref={dialog} className="auth-dialog settings-dialog" aria-labelledby="settings-title" onCancel={event=>{if(accountBusy||usernameBusy||mcpBusy)event.preventDefault();else onClose();}} onClose={onClose}>
+    <button className="auth-close" aria-label="설정 닫기" disabled={accountBusy||usernameBusy||mcpBusy} onClick={onClose}>×</button><h2 id="settings-title">{titles[section]??'설정'}</h2>
     {section==='account'&&(user?<>
       {error?<p className="auth-error" role="alert">{error} <button className="text-button" onClick={()=>setRetry(value=>value+1)}>다시 시도</button></p>:!current?<p role="status" className="settings-note">계정 정보를 불러오고 있어요.</p>:<>
         <dl className="settings-account"><div><dt>표시 이름</dt><dd>{current.user.name}</dd></div><div><dt>로그인 이메일</dt><dd>{current.user.email}</dd></div><div><dt>권한</dt><dd>{roleName(current.user.role)}</dd></div></dl>
-        <UsernameSettings key={current.user.id} user={current.user} disabled={accountBusy} onBusy={setUsernameBusy} onSaved={saved=>{setAccount(previous=>previous?.user.id===saved.id?{...previous,user:saved}:previous);onProfileUpdated(saved);}}/>
-        <div inert={usernameBusy}><AccountControls key={current.user.id} account={current} onUpdated={setAccount} onDeleted={onDeleted} onBusy={setAccountBusy}/></div>
+        <UsernameSettings key={current.user.id} user={current.user} disabled={accountBusy||mcpBusy} onBusy={setUsernameBusy} onSaved={saved=>{setAccount(previous=>previous?.user.id===saved.id?{...previous,user:saved}:previous);onProfileUpdated(saved);}}/>
+        <McpConnections key={'mcp-'+current.user.id} user={current.user} disabled={accountBusy||usernameBusy} onBusy={setMcpBusy}/>
+        <div inert={usernameBusy||mcpBusy}><AccountControls key={current.user.id} account={current} onUpdated={setAccount} onDeleted={onDeleted} onBusy={setAccountBusy}/></div>
       </>}
     </>:<><p className="settings-note">로그인하면 계정 정보를 확인할 수 있어요.</p><button className="pill" onClick={()=>{onClose();onLogin();}}>로그인</button></>)}
     {section==='display'&&<>

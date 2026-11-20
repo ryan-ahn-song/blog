@@ -3,7 +3,7 @@ import {loadPublicPage,applyPublicHtml,sitemapResponse} from './seo';
 interface Env { ASSETS: Fetcher; API: Fetcher }
 export default {
   async fetch(request:Request,env:Env):Promise<Response>{
-    const url=new URL(request.url),api=url.pathname.startsWith('/api/');
+    const url=new URL(request.url),api=url.pathname.startsWith('/api/')||url.pathname==='/mcp'||url.pathname.startsWith('/oauth/')||url.pathname.startsWith('/.well-known/oauth-');
     // Keep legacy callbacks on their original host: their state cookies are host-bound.
     const callback=/^\/api\/auth\/callback\/(google|github)$/.test(url.pathname);
     if(url.hostname==='21stark.dev'&&!callback){
@@ -16,7 +16,10 @@ export default {
     }
     let response:Response,canonical:string|undefined;
     if(url.pathname==='/'&&['GET','HEAD'].includes(request.method))return new Response(null,{status:301,headers:{Location:CANONICAL_ORIGIN+'/home'+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
-    if(!api&&['GET','HEAD'].includes(request.method)&&!url.pathname.startsWith('/assets/')){
+    if(url.pathname==='/connect'&&['GET','HEAD'].includes(request.method)){
+      const asset=await env.ASSETS.fetch(new Request(new URL('/',url),{headers:{Accept:'text/html'}}));
+      response=new Response(asset.body,asset);response.headers.set('X-Robots-Tag','noindex, nofollow');response.headers.set('Referrer-Policy','no-referrer');
+    }else if(!api&&['GET','HEAD'].includes(request.method)&&!url.pathname.startsWith('/assets/')){
       const map=await sitemapResponse(url,env);
       if(map)response=map;
       else{
@@ -31,7 +34,7 @@ export default {
     const result=new Response(request.method==='HEAD'?null:response.body,response);
     result.headers.set('X-Content-Type-Options','nosniff');
     result.headers.set('X-Frame-Options','DENY');
-    result.headers.set('Referrer-Policy','strict-origin-when-cross-origin');
+    result.headers.set('Referrer-Policy',url.pathname==='/connect'||url.pathname.startsWith('/oauth/')?'no-referrer':'strict-origin-when-cross-origin');
     result.headers.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');
     result.headers.set('Cross-Origin-Opener-Policy','same-origin-allow-popups');
     result.headers.set('Cross-Origin-Resource-Policy',url.pathname.startsWith('/api/social/')||url.pathname==='/assets/social-default.png'?'cross-origin':'same-origin');

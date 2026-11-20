@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
+import {lazy,Suspense} from 'react';
+const McpAuthorization=lazy(()=>import('./McpAuthorization'));
 import './styles.css';
 import './settings.css';
 import './writer-taxonomy.css';
@@ -10,4 +12,4 @@ import './applications.css';
 import './account-controls.css';
 import { assetUrl } from './assets.js';
 document.querySelector('link[rel="icon"]').href = assetUrl('logo_alone_light-1.svg');
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(location.pathname==='/connect'?<Suspense fallback={<p role="status">연결 요청을 불러오고 있어요.</p>}><McpAuthorization/></Suspense>:<App />);
