@@ -33,7 +33,7 @@ export default function McpAuthorization(){
     }catch(e){setError(e.message);setBusy(false);}
   }
   function completed(){setSignup(null);setLogin(false);setRetry(n=>n+1);}
-  return <main className="mcp-connect">
+  return <main className="mcp-connect" tabIndex={0} aria-labelledby="mcp-consent-title">
     <header><a href="/home" aria-label="21st ARK 홈">21st ARK</a><span>앱 연결</span></header>
     <section className="mcp-consent" aria-labelledby="mcp-consent-title">
       <p className="mcp-eyebrow">계정 접근 권한</p><h1 id="mcp-consent-title">{data?<>이 앱을<br/>연결할까요?</>:'연결 요청 확인'}</h1>
