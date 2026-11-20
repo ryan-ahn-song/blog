@@ -88,7 +88,9 @@ export async function postsForActor(request: Request, env: Env, actor:UserRow|nu
     if(writerTag){clauses.push("EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND l.kind='tag' AND l.id=?)");values.push(writerTag.slice(0,100));}
     if(q){clauses.push("(instr(lower(p.title||' '||p.summary||' '||p.body||' '||u.name),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0) OR EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND instr(lower(l.name),lower(?))>0))");values.push(q,q,q);}
     const where=' WHERE '+clauses.join(' AND ');
-    const rows = await env.DB.prepare(listSelect + where + ' ORDER BY ' + (mine ? 'p.updated_at' : 'p.published_at') + ' DESC,p.id LIMIT 20 OFFSET ?').bind(actorId,actorId,...values, page * 20).all<PostRow>();
+    const pinFirst=url.searchParams.get('pin_first')==='1'&&!mine&&!bookmarked&&!subscribed&&!author&&!q;
+    const order=(pinFirst?'pinned DESC,(SELECT pin.pinned_at FROM post_pins pin WHERE pin.post_id=p.id) DESC,':'')+(mine?'p.updated_at':'p.published_at')+' DESC,p.id';
+    const rows = await env.DB.prepare(listSelect + where + ' ORDER BY '+order+' LIMIT 20 OFFSET ?').bind(actorId,actorId,...values, page * 20).all<PostRow>();
     const total = await env.DB.prepare('SELECT count(*) AS total FROM posts p JOIN auth_users u ON u.id=p.author_id' + where).bind(...values).first<{total: number}>();
     return json({ posts: rows.results.map(p => publicPost(p, env, request)), total: total?.total ?? 0, page });
   }

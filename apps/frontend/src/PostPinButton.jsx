@@ -12,5 +12,5 @@ export default function PostPinButton({post,user,onChanged}){
     catch(e){if(active.current===owner)setError(e.message);}
     finally{setPending(false);}
   }
-  return <span className="post-pin-control"><button className="pill post-pin-button" aria-label={post.title+(post.pinned?' 고정 해제':' 고정')} aria-pressed={Boolean(post.pinned)} disabled={pending} title="트렌딩 맨 위에 표시합니다. 최대 3개까지 고정할 수 있어요." onClick={toggle}>{pending?'처리 중…':post.pinned?'고정 해제':'포스트 고정'}</button>{error&&<span className="post-pin-error" role="alert">{error}</span>}</span>;
+  return <span className="post-pin-control"><button className="pill post-pin-button" aria-label={post.title+(post.pinned?' 고정 해제':' 고정')} aria-pressed={Boolean(post.pinned)} disabled={pending} title="홈과 트렌딩 맨 위에 표시합니다. 최대 3개까지 고정할 수 있어요." onClick={toggle}>{pending?'처리 중…':post.pinned?'고정 해제':'포스트 고정'}</button>{error&&<span className="post-pin-error" role="alert">{error}</span>}</span>;
 }

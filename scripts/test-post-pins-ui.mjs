@@ -16,6 +16,8 @@ try{
  const markup=renderToStaticMarkup(createElement(TrendingPostCards,{posts:[{...post,pinned:true},...['a','b','c'].map(id=>({...post,id,title:id}))]}));
  assert.equal((markup.match(/class="trending-post-card"/g)||[]).length,3);assert(markup.includes('pinned-rank">고정'));assert(!markup.includes('aria-label="c 읽기"'));
  const recent=renderToStaticMarkup(createElement(TrendingPostCards,{posts:[{...post,pinned:true}],ranked:false}));assert(!recent.includes('pinned-rank'),'Recent history keeps its own chronology and presentation');
+ const {PostCard}=await vite.ssrLoadModule('/src/ContentViews.jsx');
+ const card=renderToStaticMarkup(createElement(PostCard,{post:{...post,pinned:true,writer:{id:'writer',name:'필자'},body:'본문',created_at:1794614400},topics:[],pending:new Set()}));assert(card.includes('post-pin-badge">고정'),'Pinned Home cards identify their placement');
  const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'https://21st-ark.dev/home'});
  for(const key of ['window','document','navigator','HTMLElement','Event','MouseEvent'])Object.defineProperty(globalThis,key,{value:dom.window[key],configurable:true});
  const {createRoot}=await import('react-dom/client');

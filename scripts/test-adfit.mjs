@@ -12,11 +12,11 @@ globalThis.IntersectionObserver=class{constructor(callback){this.callback=callba
 globalThis.ResizeObserver=class{constructor(callback){this.callback=callback;sizes.push(this);}observe(element){this.element=element;}disconnect(){this.closed=true;}};
 const writer={id:'owner',username:'Owner',name:'필자',post_count:29};
 const posts=Array.from({length:29},(_,i)=>({id:'post-'+(i+1),title:'포스트 '+(i+1),summary:'소개',body:'본문',writer,category:'tech',body_format:'plain',status:'published',published_at:1794614400,like_count:0,saved:false,liked:false}));
-let count=6,root;
+let count=6,root,feedQueries=[];
 globalThis.fetch=async input=>{const url=new URL(typeof input==='string'?input:input.url,location.origin);let data;
  if(url.pathname==='/api/auth/me')data={user:null};
  else if(url.pathname==='/api/topics')data={topics:[{id:'tech',name:'개발 · 기술'}]};
- else if(url.pathname==='/api/posts'){const page=Number(url.searchParams.get('page')??0);data={posts:posts.slice(page*12,Math.min(count,(page+1)*12)),total:count,page};}
+ else if(url.pathname==='/api/posts'){feedQueries.push(url);const page=Number(url.searchParams.get('page')??0);data={posts:posts.slice(page*12,Math.min(count,(page+1)*12)),total:count,page};}
  else if(url.pathname==='/api/writers')data={writers:[writer],total:1,page:0};
  else if(url.pathname==='/api/trending'||url.pathname==='/api/reading-history')data={posts:[]};
  else if(url.pathname==='/api/posts/post-1')data={post:posts[0]};
@@ -34,6 +34,7 @@ try{
  const {default:App}=await vite.ssrLoadModule('/src/App.jsx'),{clearApiCache}=await vite.ssrLoadModule('/src/api.js');
  async function mount(path='/home'){root?.unmount();await pause();clearApiCache();history.replaceState(null,'',path);root=createRoot(document.getElementById('root'));root.render(createElement(App));await wait(()=>path.startsWith('/search')?(count?document.querySelector('.explore-result'):document.body.textContent.includes('일치하는 포스트가 없어요.')):document.querySelector('#feed article.post')||document.querySelector('#feed .empty'),'Feed loads');}
  for(const path of ['/home','/search'])for(const size of [0,1,2,6,7]){count=size;await mount(path);assert.equal(document.querySelectorAll('.feed-ad').length,size?1:0,'One ad for non-empty short feeds, none for empty feeds: '+path+' '+size);if(size)assert.equal(document.querySelector('.feed-ad').dataset.adAfter,String(path==='/home'?1:size));if(size&&path==='/home'){const entries=[...document.querySelector('#feed').children].filter(el=>el.matches('.post'));assert(entries[0].matches('article.post'));assert(entries[1].matches('.feed-ad'),'Home always fixes the ad directly after the first organic post');}assert(!document.querySelector('#ark-adfit-sdk'),'Offscreen minimum ad never requests SDK');}
+ assert(feedQueries.some(url=>url.searchParams.get('pin_first')==='1'),'Home requests pin-first ordering');assert(feedQueries.some(url=>!url.searchParams.has('pin_first')),'Search retains latest ordering');
  count=29;await mount();await wait(()=>document.querySelectorAll('#feed article.post').length===12,'First page loads');assert.deepEqual([...document.querySelectorAll('.feed-ad')].map(el=>el.dataset.adAfter),['1','8']);
  click('.load-more');await wait(()=>document.querySelectorAll('#feed article.post').length===24,'Append page two');click('.load-more');await wait(()=>document.querySelectorAll('#feed article.post').length===29,'Append page three');
  const cards=[...document.querySelector('#feed').children].filter(el=>el.matches('.post'));

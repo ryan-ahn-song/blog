@@ -33,6 +33,16 @@ try{
  assert.equal((await (await call('/api/posts/pin1')).json()).post.pinned,true);
  assert.equal((await (await call('/api/posts?author=author')).json()).posts.find(p=>p.id==='pin1').pinned,true);
  assert.equal(Boolean((await (await call('/api/author/dashboard?days=28',{actor:'author'})).json()).posts.find(p=>p.id==='pin1').pinned),true);
+ // Pin ordering happens before LIMIT/OFFSET, not by sorting a single client page.
+ for(let i=0;i<25;i++)await db.prepare("INSERT INTO posts(id,author_id,title,summary,body,category,status,published_at) VALUES(?,'author','새 포스트','','본문','life','published',?)").bind('new-'+i,time+i).run();
+ const list=async(query)=>(await (await call('/api/posts?'+query)).json());
+ const home=await list('pin_first=1'),homeNext=await list('pin_first=1&page=1');
+ assert.equal(home.posts[0].id,'pin1','Old pinned post stays above newer posts on Home');assert.equal(home.posts[0].pinned,true);
+ const homeIds=[...home.posts,...homeNext.posts].map(p=>p.id);assert.equal(new Set(homeIds).size,home.total,'Pagination never duplicates or loses pinned posts');
+ assert.equal((await list('page=0')).posts[0].id,'new-24','Search/latest ordering is preserved');
+ assert.equal((await list('author=author&pin_first=1')).posts[0].id,'new-24','Profile chronology is preserved');
+ const filtered=await list('pin_first=1&category=life');assert(filtered.posts.every(p=>p.category==='life'));assert(!filtered.posts.some(p=>p.id==='pin1'),'Pins respect Home category filters');
+ await db.prepare("DELETE FROM posts WHERE id LIKE 'new-%'").run();
  await pin('pin2');await db.prepare("UPDATE post_pins SET pinned_at=? WHERE post_id='pin1'").bind(time).run();await db.prepare("UPDATE post_pins SET pinned_at=? WHERE post_id='pin2'").bind(time+5).run();
  assert.deepEqual((await trend()).map(p=>p.id),['pin2','pin1','top']);
  const competing=await Promise.all([pin('pin3'),pin('pin4')]);assert.deepEqual(competing.map(r=>r.status).sort(),[200,409],'Concurrent pin requests cannot exceed three slots');
