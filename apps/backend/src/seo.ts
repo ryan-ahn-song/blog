@@ -2,7 +2,7 @@ import {json,HttpError} from './http';
 import {type AuthEnv} from './session';
 import {usernameKey} from '../../../shared/usernames';
 import {writerPath,postPath} from '../../../shared/paths';
-import {postImageKey,profileImageKey} from './media';
+import {postImageKey,profileImageKey,mediaContentType} from './media';
 type Env=AuthEnv&{MEDIA:R2Bucket};
 const publicWriter="u.disabled=0 AND (u.role IN ('author','admin') OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))";
 const writerColumns="u.id,u.name,coalesce(u.username,'user-'||u.id) AS username,u.bio,u.avatar_key,u.cover_key";
@@ -45,7 +45,7 @@ export async function socialImage(request:Request,env:Env){
  }
  if(!key||(!postImageKey.test(key)&&!profileImageKey.test(key)))throw new HttpError(404,'공개 이미지를 찾을 수 없습니다.');
  const object=await env.MEDIA.get(key);if(!object)throw new HttpError(404,'공개 이미지를 찾을 수 없습니다.');
- const headers=new Headers({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Type':key.endsWith('.png')?'image/png':key.endsWith('.webp')?'image/webp':'image/jpeg','Content-Disposition':'inline'});
+ const headers=new Headers({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Type':mediaContentType(key),'Content-Disposition':'inline'});
  return new Response(request.method==='HEAD'?null:object.body,{headers});
 }
 export async function sitemapData(request:Request,env:Env){

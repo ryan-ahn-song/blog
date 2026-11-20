@@ -1,5 +1,6 @@
 export const postImageKey = /^posts\/[\w-]+\/[\w-]+\.(jpg|png|webp)$/;
-export const profileImageKey = /^profiles\/[\w-]+\/(avatar|cover)-[\w-]+\.(jpg|png|webp)$/;
+export const profileImageKey = /^profiles\/[\w-]+\/(avatar|cover)-[\w-]+\.(jpg|png|webp|gif)$/;
+export const mediaContentType=(key:string)=>key.endsWith('.gif')?'image/gif':key.endsWith('.png')?'image/png':key.endsWith('.webp')?'image/webp':'image/jpeg';
 export function mediaUrl(key: string | null, request: Request, env: { MEDIA_BASE_URL?: string }) {
   const local=['localhost','127.0.0.1','[::1]'].includes(new URL(request.url).hostname);
   return key ? '/api/media/' + key : null;

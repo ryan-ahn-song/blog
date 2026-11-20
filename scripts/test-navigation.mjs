@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 import {createServer} from 'vite';
 import {JSDOM} from 'jsdom';
+import {animatedGif} from './fixtures/gif.mjs';
 
 // Exercise the real App, URL/history, auth and API effects in a DOM. The editor's
 // third-party canvas is isolated; its loading/saving contract remains real.
@@ -20,11 +21,13 @@ const vite=await createServer({root:fileURLToPath(new URL('../apps/frontend',imp
 const account={id:'owner',username:'Owner',name:'필자',role:'author',version:1},longName='가'.repeat(40),writer={id:'owner',username:'Owner',name:longName,bio:'긴 소개 '.repeat(30),post_count:1};
 const post={id:'published',writer:{...writer,name:'필자'},title:'라우팅 확인 포스트',summary:'검색 결과',body:'공개 본문',body_format:'plain',status:'published',category:'tech',published_at:1794614400,created_at:1794614400,like_count:0,liked:false,saved:false};
 const draft={...post,id:'edit-1',title:'편집 대상 초안',status:'draft'};
-let currentUser=account,authGate=null,requests=[],root,dashboardPosts=[],deleteCalls=[],deleteFailure=false,deleteGate=null,authFailures=0,authFailureKind='server';
+let currentUser=account,authGate=null,requests=[],root,dashboardPosts=[],deleteCalls=[],deleteFailure=false,deleteGate=null,authFailures=0,authFailureKind='server',profileUploads=[];
 globalThis.fetch=async(input,options={})=>{
  const url=new URL(typeof input==='string'?input:input.url,location.origin);requests.push(url.pathname+url.search);
  let data;
  if(url.pathname==='/api/auth/me'){const account=currentUser;if(authGate)await authGate;if(authFailures>0){authFailures--;if(authFailureKind==='network')throw new TypeError('Network unavailable');return Response.json({error:'Temporarily unavailable'},{status:503});}data={user:account};}
+ else if(url.pathname==='/api/media'&&options.method==='POST'){const purpose=url.searchParams.get('purpose');profileUploads.push({purpose,type:options.headers['Content-Type'],bytes:new Uint8Array(await options.body.arrayBuffer())});const key='profiles/owner/'+purpose+'-preview.gif';data={key,url:'/api/media/'+key};}
+ else if(url.pathname==='/api/auth/profile'&&options.method==='PATCH')data={user:{...account,...JSON.parse(options.body),version:2}};
  else if(url.pathname==='/api/topics')data={topics:[{id:'tech',name:'개발 · 기술'},{id:'infra',name:'인프라'}]};
  else if(url.pathname==='/api/trending'||url.pathname==='/api/reading-history')data={posts:[]};
  else if(url.pathname==='/api/subscriptions')data={writers:[writer]};
@@ -88,5 +91,12 @@ try{
  currentUser=null;window.dispatchEvent(new window.StorageEvent('storage',{key:'ark-auth-change',newValue:'logout'}));await wait(()=>document.querySelector('#feed')?.textContent.includes('저장한 포스트를 계정에서'),'Other-tab logout is confirmed by the server');assert.equal(document.querySelector('.rail-profile').getAttribute('aria-label'),'로그인');
  currentUser=account;window.dispatchEvent(new window.StorageEvent('storage',{key:'ark-auth-change',newValue:'login'}));await wait(()=>document.querySelector('.rail-profile')?.getAttribute('aria-label')==='내 프로필','Other-tab login restores without a page reload');assert.equal(location.pathname,'/bookmark');
  let finishStale;authGate=new Promise(resolve=>finishStale=resolve);await mount('/bookmark');await wait(()=>requests.includes('/api/auth/me'),'Old bootstrap started');authGate=null;await mount('/bookmark',null);await wait(()=>document.querySelector('.rail-profile')?.getAttribute('aria-label')==='로그인','New page confirms guest state');finishStale();await new Promise(resolve=>setTimeout(resolve,30));assert.equal(document.querySelector('.rail-profile').getAttribute('aria-label'),'로그인','Unmounted stale auth response cannot revive an account');
+ root.unmount();root=createRoot(document.getElementById('root'));const {default:ProfileForm}=await vite.ssrLoadModule('/src/ProfileForm.jsx');let savedProfile;
+ const markdown='**개발자**\n\n[사이트](https://example.com)',gif=animatedGif();root.render(createElement(ProfileForm,{expanded:true,user:{...account,bio:markdown},onSaved:user=>{savedProfile=user;}}));await wait(()=>document.querySelector('.profile-edit input[type="file"]'),'Profile editor loads');
+ for(const purpose of ['avatar','cover']){const field=document.querySelector('.profile-upload--'+purpose+' input[type="file"]');assert(field.accept.includes('image/gif'));Object.defineProperty(field,'files',{value:[new File([gif],purpose+'.gif',{type:'image/gif'})],configurable:true});field.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>document.querySelector('.profile-upload--'+purpose+' img')&&!document.querySelector('.profile-edit fieldset').disabled,'GIF uploads without flattening');assert(!document.querySelector('.image-crop-dialog'),'Animated GIF never enters static canvas editing');}
+ assert.equal(profileUploads.length,2);for(const upload of profileUploads){assert.equal(upload.type,'image/gif');assert.deepEqual(upload.bytes,gif);}assert(!document.querySelector('[aria-label="프로필 사진 조정"]'));assert(!document.querySelector('[aria-label="커버 이미지 조정"]'));
+ click('.bio-preview-toggle');await wait(()=>document.querySelector('.profile-bio-preview strong')?.textContent==='개발자','Biography Markdown preview renders');assert.equal(document.querySelector('.profile-bio-preview a').href,'https://example.com/');
+ document.querySelector('.profile-edit form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await wait(()=>savedProfile,'Profile saves GIF keys and Markdown');assert.equal(savedProfile.bio,markdown);assert(savedProfile.avatar_key.endsWith('.gif'));assert(savedProfile.cover_key.endsWith('.gif'));
+ const invalid=document.querySelector('.profile-upload--avatar input[type="file"]');Object.defineProperty(invalid,'files',{value:[new File(['not a GIF'],'bad.gif',{type:'image/gif'})],configurable:true});invalid.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>document.querySelector('.profile-edit .auth-error'),'Malformed GIF is rejected before upload');assert.equal(profileUploads.length,2);
  console.log('Navigation passed: native menu URLs, direct/reload search and filters, back/forward reader state, bookmarks and auth guards, delayed auth/direct draft loading, dirty cancellation, saved-post return path, long names, legacy post links; delete confirmation cancel/Escape, failure/retry, pending protection and list refresh; auth bootstrap retries/offline recovery, preserved sessions, cross-tab login/logout and stale-response cancellation.');
 }finally{root?.unmount();await vite.close();dom.window.close();}

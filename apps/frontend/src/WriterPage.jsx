@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, jsonRequest } from './api';
 import { Avatar } from './ContentViews';
 import ProfileForm from './ProfileForm';
+import ProfileBio from './ProfileBio';
 import {WriterTaxonomySidebar} from './WriterTaxonomy';
 
 export default function WriterPage({id,user,version,taxonomyVersion,filters,onFilter,onTaxonomyChanged,onLoaded,onSaved,onShare,onLogin,onSubscriptionChange,children}) {
@@ -32,7 +33,7 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
         {own?<button className="pill primary" onClick={()=>setEditing(true)}>프로필 수정</button>:<><button className="pill" onClick={()=>onShare(writer)}>프로필 공유 ↗</button><button className={'pill '+(writer.subscribed?'':'primary')} aria-pressed={Boolean(writer.subscribed)} disabled={subscribing} onClick={subscribe}>{subscribing?'처리 중…':writer.subscribed?'구독 중':'구독하기'}</button></>}
       </div></div>
       {subscriptionError&&<p className="auth-error" role="alert">{subscriptionError}</p>}
-      <div className="writer-about"><div><h2>{writer.name}</h2>{writer.bio&&<p>{writer.bio}</p>}</div><dl className="writer-stats"><div><dt>업로드한 포스트</dt><dd>{writer.post_count.toLocaleString()}</dd></div><div><dt>총 조회수</dt><dd>{(writer.total_views??0).toLocaleString()}</dd></div></dl></div>
+      <div className="writer-about"><div><h2>{writer.name}</h2><ProfileBio value={writer.bio}/></div><dl className="writer-stats"><div><dt>업로드한 포스트</dt><dd>{writer.post_count.toLocaleString()}</dd></div><div><dt>총 조회수</dt><dd>{(writer.total_views??0).toLocaleString()}</dd></div></dl></div>
       <nav className="writer-tabs" aria-label="필자 페이지">{[['post','포스트',writer.post_count],['notice','공지',writer.notice_count??0]].map(([kind,label,count])=><button key={kind} aria-pressed={(filters.kind??'post')===kind} onClick={()=>onFilter('kind',kind)}>{label} <span>{count}</span></button>)}</nav>
       <div className={'writer-post-layout '+(filters.kind==='notice'?'notice':'')}><section className="writer-posts" id="writer-posts" aria-labelledby="writer-posts-heading"><div className="writer-posts-heading"><h3 id="writer-posts-heading">{filters.kind==='notice'?'공지':filters.category||filters.tag?'분류한 포스트':'최신 포스트'}</h3>{(filters.category||filters.tag)&&<button onClick={()=>onFilter('clear')}>필터 지우기 ×</button>}</div>{children}</section>{filters.kind!=='notice'&&<WriterTaxonomySidebar writerId={id} user={user} total={writer.post_count} version={taxonomyVersion+':'+version} filters={filters} onFilter={onFilter} onChanged={onTaxonomyChanged}/>}</div>
     </div>

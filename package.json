@@ -20,6 +20,7 @@
     "check": "npm run check --workspaces",
     "test:render": "node scripts/check-render.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
+    "test:profile-media": "npm run build:backend && node scripts/test-profile-media.mjs",
     "test:auth": "npm run build:backend && node --experimental-strip-types scripts/test-auth.mjs",
     "test:features": "npm run build:backend && node scripts/test-features.mjs",
     "db:check": "npm run db:check -w @21st-ark/backend",

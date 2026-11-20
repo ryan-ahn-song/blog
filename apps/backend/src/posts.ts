@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { json, readBody, HttpError } from './http';
 import { type AuthEnv, requireUser, checkOrigin, currentUser, now, limited, digest, local } from './session';
 import { topicsForPost } from './catalog';
-import { mediaUrl,postImageKey,profileImageKey,inlineImageKey } from './media';
+import { mediaUrl,postImageKey,profileImageKey,inlineImageKey,mediaContentType } from './media';
 import { documentFields } from './document';
 import {postLabels,labelWrites} from './taxonomy';
 type Env = AuthEnv & { MEDIA: R2Bucket; MEDIA_BASE_URL?: string };
@@ -159,7 +159,7 @@ export async function handleMedia(request: Request, env: Env) {
     if(!visible)throw new HttpError(404,'이미지를 찾을 수 없습니다.');
     const object = await env.MEDIA.get(key);
     if (!object) throw new HttpError(404,'이미지를 찾을 수 없습니다.');
-    const headers = new Headers({'X-Content-Type-Options':'nosniff'}); object.writeHttpMetadata(headers); headers.set('ETag',object.httpEtag);headers.set('Cache-Control','private, no-store');headers.set('Content-Type',key.endsWith('.png')?'image/png':key.endsWith('.webp')?'image/webp':'image/jpeg');
+    const headers = new Headers({'X-Content-Type-Options':'nosniff'}); object.writeHttpMetadata(headers); headers.set('ETag',object.httpEtag);headers.set('Cache-Control','private, no-store');headers.set('Content-Type',mediaContentType(key));
     return new Response(object.body,{headers});
   }
   if (request.method !== 'POST') return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'POST'});
@@ -177,8 +177,9 @@ export async function handleMedia(request: Request, env: Env) {
   const png = data.length > 8 && [137,80,78,71,13,10,26,10].every((v,i)=>data[i]===v);
   const jpg = data.length > 3 && data[0]===255 && data[1]===216 && data[2]===255;
   const webp = data.length > 12 && new TextDecoder().decode(data.slice(0,4))==='RIFF' && new TextDecoder().decode(data.slice(8,12))==='WEBP';
-  const ext = type==='image/png' && png ? 'png' : type==='image/jpeg' && jpg ? 'jpg' : type==='image/webp' && webp ? 'webp' : null;
-  if (!ext) throw new HttpError(415, 'JPG, PNG, WebP 이미지만 올릴 수 있습니다.');
+  const gif=/^GIF8[79]a$/.test(new TextDecoder().decode(data.subarray(0,6)));
+  const ext = purpose!=='post'&&type==='image/gif'&&gif?'gif':type==='image/png' && png ? 'png' : type==='image/jpeg' && jpg ? 'jpg' : type==='image/webp' && webp ? 'webp' : null;
+  if (!ext) throw new HttpError(415, purpose==='post'?'JPG, PNG, WebP 이미지만 올릴 수 있습니다.':'JPG, PNG, WebP, GIF 이미지만 올릴 수 있습니다.');
   checkImageDimensions(data,ext);
   const key = (purpose==='post'?'posts/'+user.id+'/':'profiles/'+user.id+'/'+purpose+'-')+randomUUID()+'.'+ext;
   await reserveUpload(env,user.id,key,size);
