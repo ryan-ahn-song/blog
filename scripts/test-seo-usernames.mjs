@@ -17,7 +17,7 @@ try{
  assert.equal((await db.prepare("SELECT username FROM auth_users WHERE id='legacy'").first()).username,'user-legacy');
  assert.equal((await db.prepare("SELECT username_confirmed FROM auth_users WHERE id='legacy'").first()).username_confirmed,0);
  const cookies={};
- for(const [id,role]of [['owner','author'],['other','author'],['reader','reader']]){
+ for(const [id,role]of [['owner','author'],['other','author'],['reader','reader'],['numeric','reader']]){
   await db.prepare('INSERT INTO auth_users(id,email,name,role) VALUES(?,?,?,?)').bind(id,id+'@example.invalid',id,role).run();
   const token=randomBytes(32).toString('hex');await db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,login_version,last_seen) VALUES(?,?,?,0,?)').bind(createHash('sha256').update(token).digest('hex'),id,time+3600,time).run();cookies[id]='__Host-ark_session='+token;
  }
@@ -26,8 +26,12 @@ try{
  const claimed=await profile('owner','RyanSong');assert.equal(claimed.status,200);assert.equal((await claimed.json()).user.needs_username,false);
  assert.equal((await (await call('/api/auth/username-availability?username=ryansong')).json()).available,false);
  assert.equal((await (await call('/api/auth/username-availability?username=RyanSong',{actor:'owner'})).json()).available,true);
- for(const name of ['Ryan Song','api','user-someone','/admin','bad#name','x','_first','a'.repeat(51),'home','search','people','bookmark','write','my-posts','subscriptions','admin','ＨＯＭＥ'])assert.equal((await call('/api/auth/username-availability?'+new URLSearchParams({username:name}))).status,400,name);
+ for(const name of ['Ryan Song','api','user-someone','/admin','bad#name','x','_first','a'.repeat(51),'home','search','people','bookmark','write','my-posts','subscriptions','admin','ＨＯＭＥ','404','-first','123 name','123/name','123?x','123#x'])assert.equal((await call('/api/auth/username-availability?'+new URLSearchParams({username:name}))).status,400,name);
  assert.equal((await (await call('/api/auth/username-availability?'+new URLSearchParams({username:'ＲｙａｎＳｏｎｇ'}))).json()).available,false,'Unicode compatibility forms share the same namespace');
+ for(const username of ['21st-ARK','123','2한글','１２３Name']){const response=await call('/api/auth/username-availability?'+new URLSearchParams({username}));assert.equal(response.status,200,username);assert.equal((await response.json()).available,true);}
+ assert.equal((await profile('numeric','123Member')).status,200,'Numeric-leading usernames work in account settings');
+ assert.equal((await profile('numeric','123New',1)).status,200,'Numeric-leading usernames can be renamed');
+
  assert.equal((await profile('other','RYANSONG')).status,409);
  assert.equal((await profile('owner','NeverClaimed',0)).status,409);assert.equal((await (await call('/api/auth/username-availability?username=NeverClaimed')).json()).available,true,'Failed stale profile writes never reserve a name');
  assert.equal((await profile('owner','RyanNew',1)).status,200);
@@ -36,7 +40,8 @@ try{
  assert.equal((await profile('reader','QuietReader')).status,200);
  const ticket=async id=>{const token=randomBytes(32).toString('hex');await db.prepare('INSERT INTO auth_pending_signups(token_hash,provider,subject,email,suggested_name,expires_at) VALUES(?,?,?,?,?,?)').bind(createHash('sha256').update(token).digest('hex'),'google',id,id+'@example.invalid','Suggested',time+1800).run();return '__Host-ark_signup='+token;};
  const legal=await (await call('/api/auth/legal')).json(),signup={name:'새 회원',terms:true,privacy:true,version:legal.version};
- const signupTicket=await ticket('new-member');assert.equal((await call('/api/auth/signup',{method:'POST',cookie:signupTicket,body:{...signup,username:'RyanSong'}})).status,409);assert.equal((await call('/api/auth/signup',{method:'POST',cookie:signupTicket,body:{...signup,username:'NewMember'}})).status,201,'Duplicate names do not consume signup authentication');
+ const signupTicket=await ticket('new-member');assert.equal((await call('/api/auth/signup',{method:'POST',cookie:signupTicket,body:{...signup,username:'RyanSong'}})).status,409);const numericSignup=await call('/api/auth/signup',{method:'POST',cookie:signupTicket,body:{...signup,username:'21st-ARK'}});assert.equal(numericSignup.status,201,'Numeric-leading signup succeeds after a duplicate-name retry');assert.equal((await numericSignup.json()).user.username,'21st-ARK');
+ for(const username of ['21ST-ark','２１ｓｔ-ＡＲＫ'])assert.equal((await(await call('/api/auth/username-availability?'+new URLSearchParams({username}))).json()).available,false,'Numeric names keep case-insensitive/NFKC duplicate protection');
  const a=await ticket('race-a'),b=await ticket('race-b'),races=await Promise.all([a,b].map(cookie=>call('/api/auth/signup',{method:'POST',cookie,body:{...signup,username:'SameName'}})));assert.deepEqual(races.map(r=>r.status).sort(),[201,409]);
  assert.equal((await db.prepare("SELECT count(*) AS n FROM auth_users WHERE username_key='samename'").first()).n,1);
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY1kAAAAASUVORK5CYII=','base64');
@@ -45,6 +50,8 @@ try{
  const template=await readFile(new URL('../apps/frontend/index.html',import.meta.url),'utf8');
  const {default:worker}=await vite.ssrLoadModule('/@fs/'+fileURLToPath(new URL('../apps/frontend/worker.ts',import.meta.url)).replaceAll('\\','/'));
  const env={ASSETS:{fetch:async()=>new Response(template,{headers:{'Content-Type':'text/html'}})},API:{fetch:async request=>{assert(!request.headers.has('Cookie'),'Public rendering strips sessions');assert(!request.headers.has('Authorization'));return mf.dispatchFetch(request.url,{method:request.method,headers:Object.fromEntries(request.headers)});}}};
+ for(const username of ['21st-ARK','123New']){const response=await worker.fetch(new Request(origin+'/'+username),env);assert.equal(response.status,200);assert((await response.text()).includes('rel="canonical" href="'+origin+'/'+username+'"'));}
+ const numericAlias=await worker.fetch(new Request(origin+'/123Member'),env);assert.equal(numericAlias.status,301);assert.equal(numericAlias.headers.get('Location'),origin+'/123New');
  const root=await worker.fetch(new Request(origin+'/?auth=success&source=legacy'),env);assert.equal(root.status,301);assert.equal(root.headers.get('Location'),origin+'/home?auth=success&source=legacy','Root redirect preserves OAuth return parameters');
  for(const path of ['/search?q=private-query','/bookmark','/write?post=draft','/my-posts','/subscriptions','/admin']){
   const privatePage=await worker.fetch(new Request(origin+path,{headers:{Cookie:cookies.owner}}),{...env,API:{fetch:async()=>{throw Error('App shell must not query account or public data');}}}),privateHtml=await privatePage.text();
@@ -72,5 +79,5 @@ try{
  const existingMenuProfile=await worker.fetch(new Request(origin+'/@home'),env),existingMenuHtml=await existingMenuProfile.text();assert.equal(existingMenuProfile.status,200);assert(existingMenuHtml.includes('href="/@home/posts/legacy-menu"'));
  const existingMenuPost=await worker.fetch(new Request(origin+'/@home/posts/legacy-menu'),env),existingPostHtml=await existingMenuPost.text();assert.equal(existingMenuPost.status,200);assert(existingPostHtml.includes('href="/@home"'));assert.equal(JSON.parse(existingPostHtml.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]).author.url,origin+'/@home');
  await db.prepare("UPDATE auth_users SET disabled=1 WHERE id='owner'").run();assert.equal((await call('/api/seo/page?post_id=published')).status,404);assert.equal((await call('/api/social/posts/published/image')).status,404);assert(!JSON.stringify(await (await call('/api/seo/sitemap?kind=posts')).json()).includes('published'));
- console.log('SEO/usernames passed: unique Unicode-normalized names, stale/concurrent claims, signup retry, reserved aliases; public-only SSR/OG/JSON-LD/images, HTML escaping, canonical redirects, anonymous rendering, private/draft/disabled protection, sitemaps and robots.');
+ console.log('SEO/usernames passed: numeric-leading signup/settings/URLs/aliases and case/NFKC duplicate protection; unique Unicode-normalized names, stale/concurrent claims, signup retry, reserved aliases; public-only SSR/OG/JSON-LD/images, HTML escaping, canonical redirects, anonymous rendering, private/draft/disabled protection, sitemaps and robots.');
 }finally{await mf.dispose();await vite.close();}

@@ -9,7 +9,7 @@ export default function UsernameField({value,onChange,onValidityChange,knownUser
   useEffect(()=>{onValidityChange(valid);},[valid,onValidityChange]);
   async function check(){
     if(busy)return;
-    if(!normalized){setMessage('공백 없이 2~50자의 한글·영문·숫자·_·-로 입력하고 문자로 시작해 주세요.');setAvailable(false);return;}
+    if(!normalized){setMessage('공백 없이 2~50자의 한글·영문·숫자·_·-로 입력하고 문자 또는 숫자로 시작해 주세요.');setAvailable(false);return;}
     const requested=value;setBusy(true);setMessage('');
     try{const result=await api('/api/auth/username-availability?'+new URLSearchParams({username:normalized}));if(latest.current!==requested)return;setChecked(requested);setAvailable(result.available);setMessage(result.available?'사용할 수 있는 유저네임입니다.':'이미 사용 중이거나 이전 주소로 보존된 유저네임입니다.');}
     catch(e){if(latest.current===requested){setAvailable(false);setMessage(e.message);}}

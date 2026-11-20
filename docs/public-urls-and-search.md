@@ -5,7 +5,7 @@
 - Sidebar pages use `/home`, `/search`, `/people`, `/bookmark`, `/write`, `/my-posts`, `/subscriptions` and `/admin`. The root redirects to `/home`, retaining OAuth callback query parameters and legacy fragments. Direct visits and browser Back/Forward restore the selected screen; search terms/topics and edit targets are included in the URL.
 - Home and people are publicly rendered and indexed. Account, saved, subscription, writing, management and search screens serve a generic `noindex` shell without a public API lookup or private data. Client requests still require the corresponding session and role.
 - Display names and URL usernames are separate. Display names do not have to be unique.
-- Usernames contain 2–50 characters, start with a letter, and allow Unicode letters/numbers, `_` and `-`. Whitespace, route names and the legacy `user-` namespace are reserved.
+- Usernames contain 2–50 characters, start with a letter or number (for example `21st-ARK`), and allow Unicode letters/numbers, `_` and `-`. Whitespace, route names and the legacy `user-` namespace are reserved.
 - NFKC normalization and case folding enforce uniqueness in the API and database. The selected spelling is retained in canonical URLs.
 - Profiles use `/{username}`; posts and notices use `/{username}/posts/{postId}`. Legacy `#writer-{id}` and `#post-{id}` links remain supported by the client.
 - New members choose a username after OAuth alongside their display name and consent. Existing members choose one on their next authenticated visit. Account settings support availability checks and username changes; profile editing retains the display name, biography and images.
