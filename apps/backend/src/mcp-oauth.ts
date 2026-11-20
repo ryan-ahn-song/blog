@@ -121,6 +121,15 @@ export async function handleMcpOAuth(request:Request,env:McpEnv,ctx:ExecutionCon
     }
     if(request.method!=='POST')return method('GET, POST');
     checkOrigin(request);const body=await readBody(request);
+    if(body.action==='switch_account'){
+      const user=await requireUser(request,env);
+      if(body.user_id!==user.id)throw new HttpError(409,'로그인 계정이 변경되었습니다. 현재 계정을 다시 확인해 주세요.');
+      // Keep the browser-bound consent request and existing MCP grants intact.
+      // End this session before social sign-in, which otherwise links identities.
+      const removed=await env.DB.prepare('DELETE FROM auth_sessions WHERE token_hash=? AND user_id=? RETURNING user_id').bind(digest(readCookie(request,'session')),user.id).first();
+      if(!removed)throw new HttpError(409,'로그인 상태가 변경되었습니다. 다시 확인해 주세요.');
+      return json({user:null},200,{'Set-Cookie':cookie(request,'session','',0),'Cache-Control':'no-store'});
+    }
     if(typeof body.approve!=='boolean')throw new HttpError(400,'연결 승인 여부를 확인해 주세요.');
     const user=body.approve?await requireUser(request,env):null;
     const scope=body.scopes;

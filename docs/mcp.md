@@ -4,6 +4,8 @@ Endpoint: **`https://21st-ark.dev/mcp`**, Streamable HTTP. No API key or blog co
 
 더 보기 → **MCP 연결 안내** is available to guests and all account roles. It explains endpoint copying, OAuth sign-in and consent, draft review, role requirements, connection management and troubleshooting. Readers can open the author-application form; authors can jump to account connection settings.
 
+The consent page shows the current account and provides **다른 계정으로 연결**. After confirmation, a browser-bound, same-origin request ends only the displayed account's current browser session (including other tabs), while preserving the pending OAuth request and existing MCP connections. Google/GitHub sign-in returns to that request. Scopes are selected afresh for the new account's current role, and connecting still requires explicit consent. Cancelling sign-in leaves the browser signed out; expired requests must be restarted from the AI app. This operation does not link or merge social identities.
+
 ## Capabilities and publication boundary
 
 | Tool | Required scope | Operation |

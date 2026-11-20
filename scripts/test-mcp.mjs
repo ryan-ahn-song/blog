@@ -7,12 +7,12 @@ import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client
 const require=createRequire(import.meta.resolve('wrangler/package.json')),{Miniflare,convertV4MiniflareOptions}=require('miniflare');
 const origin='https://21st-ark.dev',redirect='https://client.example.org/callback',hash=value=>createHash('sha256').update(value).digest('hex');
 const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII=','base64');
-let imageFetches=0;
+let imageFetches=0,githubIdentity={id:900,name:'owner',email:'owner@example.invalid'};
 const mf=new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:fileURLToPath(new URL('../apps/backend/dist/index.js',import.meta.url)),compatibilityDate:'2026-11-10',compatibilityFlags:['nodejs_compat','global_fetch_strictly_public'],d1Databases:{DB:'mcp-test'},r2Buckets:['MEDIA'],bindings:{GITHUB_CLIENT_ID:'test-client',GITHUB_CLIENT_SECRET:'test-secret',AUTH_ORIGINS:origin},outboundService:async request=>{
   const url=new URL(request.url);
   if(url.href==='https://github.com/login/oauth/access_token')return Response.json({access_token:'test-github-token',token_type:'bearer'});
-  if(url.href==='https://api.github.com/user')return Response.json({id:900,name:'owner'});
-  if(url.pathname==='/user/emails')return Response.json([{email:'owner@example.invalid',primary:true,verified:true}]);
+  if(url.href==='https://api.github.com/user')return Response.json({id:githubIdentity.id,name:githubIdentity.name});
+  if(url.pathname==='/user/emails')return Response.json([{email:githubIdentity.email,primary:true,verified:true}]);
   if(url.href==='https://images.example.org/test.png'){imageFetches++;assert(!request.headers.has('Cookie'));assert(!request.headers.has('Authorization'));return new Response(image,{headers:{'Content-Type':'image/png'}});}
   if(url.href==='https://images.example.org/private'){return new Response(null,{status:302,headers:{Location:'https://127.0.0.1/secret'}});}
   if(url.href==='https://images.example.org/svg')return new Response('<svg onload="alert(1)"/>',{headers:{'Content-Type':'image/svg+xml'}});
@@ -60,12 +60,33 @@ try{
  }
  const missing=await begin({redirectUri:'https://evil.example.org/callback'});assert.notEqual(missing.response.headers.get('Location')?.startsWith('https://evil.example.org'),true,'Invalid redirect must never be followed');
  assert.equal((await begin({challengeMethod:'plain'})).response.status,303,'Provider redirects validated request errors safely');
+ const beforeSwitch=await connect('owner',{scopes:'account:read',granted:['account:read']});
  const loginFlow=await begin();
  await db.prepare("INSERT INTO auth_github_accounts(subject,user_id) VALUES('900','owner')").run();
  const loginStart=await call('/api/auth/github?origin='+encodeURIComponent(origin)+'&mcp_request='+loginFlow.flow,{cookie:loginFlow.cookie}),loginState=new URL(loginStart.headers.get('Location')).searchParams.get('state');
  const loginCookies=loginStart.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
  const callback=await call('/api/auth/callback/github?'+new URLSearchParams({state:loginState,code:'test-code'}),{cookie:loginFlow.cookie+'; '+loginCookies});
  assert.equal(new URL(callback.headers.get('Location')).pathname,'/connect');assert.equal(new URL(callback.headers.get('Location')).searchParams.get('request'),loginFlow.flow);assert.equal(new URL(callback.headers.get('Location')).searchParams.get('auth'),'success','MCP sign-in returns to consent, ordinary sign-in still returns home');
+ const switchPath='/api/mcp/authorization/'+loginFlow.flow,oldBrowserSession=callback.headers.getSetCookie().find(value=>value.startsWith('__Host-ark_session=')).split(';')[0],oldBrowserCookie=loginFlow.cookie+'; '+oldBrowserSession;
+ await expect(await call(switchPath,{cookie:oldBrowserSession,method:'POST',body:{action:'switch_account',user_id:'owner'}}),410,'Switch requires the original browser-bound flow');
+ await expect(await call(switchPath,{cookie:oldBrowserCookie,method:'POST',headers:{Origin:'https://evil.example.org'},body:{action:'switch_account',user_id:'owner'}}),403);
+ await expect(await call(switchPath,{cookie:oldBrowserCookie,method:'POST',body:{action:'switch_account',user_id:'reader'}}),409,'Stale identity must not log out a different account');
+ assert.equal((await (await call('/api/auth/me',{cookie:oldBrowserSession})).json()).user.id,'owner');
+ const connectionCount=(await db.prepare('SELECT count(*) AS n FROM mcp_connections').first()).n;
+ const switched=await expect(await call(switchPath,{cookie:oldBrowserCookie,method:'POST',body:{action:'switch_account',user_id:'owner'}}),200);assert(switched.headers.getSetCookie().some(value=>value.startsWith('__Host-ark_session=;')&&value.includes('Max-Age=0')));assert(!switched.headers.getSetCookie().some(value=>value.includes('mcp_')),'Switch preserves pending consent cookie');
+ assert.equal((await (await call('/api/auth/me',{cookie:oldBrowserSession})).json()).user,null,'Old browser session cannot be replayed');assert.equal((await (await call('/api/auth/me',{actor:'owner'})).json()).user.id,'owner','Other browser sessions are preserved');
+ assert.equal((await (await call(switchPath,{cookie:oldBrowserCookie})).json()).user,null);await expect(await call(switchPath,{cookie:oldBrowserCookie,method:'POST',body:{approve:true,user_id:'owner',scopes:['account:read']}}),401);
+ assert.equal((await db.prepare('SELECT count(*) AS n FROM mcp_connections').first()).n,connectionCount,'Switch alone creates no grant');
+ await expect(await call('/mcp',{method:'POST',token:beforeSwitch.tokens.access_token,headers:{Accept:'application/json, text/event-stream'},body:{jsonrpc:'2.0',id:900,method:'tools/list'}}),200,'Existing MCP connection remains active after browser account switch');
+ githubIdentity={id:901,name:'reader',email:'reader@example.invalid'};await db.prepare("INSERT INTO auth_github_accounts(subject,user_id) VALUES('901','reader')").run();
+ const nextStart=await call('/api/auth/github?origin='+encodeURIComponent(origin)+'&mcp_request='+loginFlow.flow,{cookie:loginFlow.cookie});
+ const nextCallback=await call('/api/auth/callback/github?'+new URLSearchParams({state:new URL(nextStart.headers.get('Location')).searchParams.get('state'),code:'reader-code'}),{cookie:loginFlow.cookie+'; '+nextStart.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')});
+ assert.equal(new URL(nextCallback.headers.get('Location')).searchParams.get('request'),loginFlow.flow);
+ const nextCookie=loginFlow.cookie+'; '+nextCallback.headers.getSetCookie().find(value=>value.startsWith('__Host-ark_session=')).split(';')[0],nextConsent=await (await expect(await call(switchPath,{cookie:nextCookie}),200)).json();assert.equal(nextConsent.user.id,'reader');assert.deepEqual(nextConsent.available_scopes,['account:read','offline_access']);
+ await expect(await call(switchPath,{cookie:nextCookie,method:'POST',body:{approve:true,user_id:'reader',scopes:['account:read','posts:write']}}),400,'Old author scopes cannot follow the switched reader');
+ const nextDecision=await (await expect(await call(switchPath,{cookie:nextCookie,method:'POST',body:{approve:true,user_id:'reader',scopes:['account:read']}}),200)).json();
+ const switchedTokens=await (await expect(await form('/oauth/token',{grant_type:'authorization_code',client_id:client,redirect_uri:redirect,code:new URL(nextDecision.redirect).searchParams.get('code'),code_verifier:loginFlow.verifier,resource:origin+'/mcp'}),200)).json();assert.equal(switchedTokens.scope,'account:read');
+ assert.equal((await db.prepare('SELECT user_id FROM mcp_connections ORDER BY rowid DESC LIMIT 1').first()).user_id,'reader');githubIdentity={id:900,name:'owner',email:'owner@example.invalid'};
  const ordinaryStart=await call('/api/auth/github?origin='+encodeURIComponent(origin),{cookie:loginFlow.cookie}),ordinaryState=new URL(ordinaryStart.headers.get('Location')).searchParams.get('state');
  const ordinaryCallback=await call('/api/auth/callback/github?'+new URLSearchParams({state:ordinaryState,code:'ordinary-code'}),{cookie:loginFlow.cookie+'; '+ordinaryStart.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')});assert.equal(new URL(ordinaryCallback.headers.get('Location')).pathname,'/','Pending MCP flows do not capture unrelated website sign-in');
  const pending=await begin();await expect(await call('/api/mcp/authorization/'+pending.flow,{actor:'owner'}),410);
@@ -74,6 +95,7 @@ try{
  await expect(await call('/api/mcp/authorization/'+pending.flow,{cookie:pending.cookie,method:'POST',body:{approve:false}}),200,'Deny does not require sign-in');
  await expect(await call('/api/mcp/authorization/'+pending.flow,{cookie:pending.cookie}),410);
  const expired=await begin();await db.prepare('UPDATE mcp_flows SET expires_at=0 WHERE id=?').bind(expired.flow).run();await expect(await call('/api/mcp/authorization/'+expired.flow,{cookie:expired.cookie}),410);
+ await expect(await call('/api/mcp/authorization/'+expired.flow,{actor:'owner',cookie:expired.cookie,method:'POST',body:{action:'switch_account',user_id:'owner'}}),410);assert.equal((await (await call('/api/auth/me',{actor:'owner'})).json()).user.id,'owner','Expired flow cannot log out a browser');
  const cimd=await connect('owner',{clientId:'https://client.example.org/mcp.json',scopes:'account:read',granted:['account:read']});assert(!cimd.tokens.refresh_token,'Refresh tokens require offline_access consent');
  const main=await connect();
  const nativeClient=new Client({name:'SDK integration',version:'1.0.0'});
@@ -147,5 +169,5 @@ try{
  await expect(await call('/mcp',{method:'POST',token:low.tokens.access_token,headers:{Origin:'https://evil.example.org'},body:{jsonrpc:'2.0',id:94,method:'tools/list'}}),403);
  const allStorage=JSON.stringify((await db.prepare('SELECT value FROM mcp_oauth_storage').all()).results);assert(!allStorage.includes(low.tokens.access_token));assert(!allStorage.includes(low.tokens.refresh_token));
  await db.prepare("DELETE FROM auth_users WHERE id='reader'").run();assert.equal((await db.prepare("SELECT count(*) AS n FROM mcp_connections WHERE user_id='reader'").first()).n,0);assert.equal((await db.prepare("SELECT count(*) AS n FROM mcp_oauth_storage WHERE user_id='reader'").first()).n,0);
- console.log('MCP passed: OAuth discovery/DCR/PKCE/consent, CSRF/browser/account binding, private scoped tools, Markdown/media/embed drafts, SSRF and invalid image rejection, idempotency/revisions, human-only publication, refresh rotation/code replay, ownership, immediate revoke, suspension/login-version invalidation, hashed/encrypted token storage and account deletion cleanup.');
+ console.log('MCP passed: OAuth discovery/DCR/PKCE/consent, CSRF/browser/account binding, account switch with session revocation, preserved flow and new-account sign-in/consent, private scoped tools, Markdown/media/embed drafts, SSRF and invalid image rejection, idempotency/revisions, human-only publication, refresh rotation/code replay, ownership, immediate revoke, suspension/login-version invalidation, hashed/encrypted token storage and account deletion cleanup.');
 }finally{await mf.dispose();}
