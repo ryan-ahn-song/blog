@@ -14,15 +14,15 @@ export async function handleSubscriptions(request:Request,env:Env){
   if(request.method!=='PUT')return json({error:'지원하지 않는 요청입니다.'},405,{Allow:'PUT'});
   checkOrigin(request);
   const actor=await requireUser(request,env),id=path.match(/^\/api\/writers\/([\w-]+)\/subscription$/)?.[1];
-  if(!id)throw new HttpError(404,'필자를 찾을 수 없습니다.');
+  if(!id)throw new HttpError(404,'프로필을 찾을 수 없습니다.');
   if(id===actor.id)throw new HttpError(400,'본인의 프로필은 구독할 수 없습니다.');
   const body=await readBody(request);
   if(typeof body.active!=='boolean')throw new HttpError(400,'구독 상태를 확인해 주세요.');
   if(await limited(env.DB,digest('subscription:'+actor.id),60))throw new HttpError(429,'요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   if(body.active){
-    const target=await env.DB.prepare("SELECT id FROM auth_users u WHERE id=? AND disabled=0 AND (role IN ('author','admin') OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(id).first();
-    if(!target)throw new HttpError(404,'필자를 찾을 수 없습니다.');
-    await env.DB.prepare("INSERT INTO writer_subscriptions(subscriber_id,writer_id) SELECT ?,u.id FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published')) ON CONFLICT(subscriber_id,writer_id) DO NOTHING").bind(actor.id,id).run();
+    const target=await env.DB.prepare("SELECT id FROM auth_users u WHERE id=? AND disabled=0").bind(id).first();
+    if(!target)throw new HttpError(404,'프로필을 찾을 수 없습니다.');
+    await env.DB.prepare("INSERT INTO writer_subscriptions(subscriber_id,writer_id) SELECT ?,u.id FROM auth_users u WHERE u.id=? AND u.disabled=0 ON CONFLICT(subscriber_id,writer_id) DO NOTHING").bind(actor.id,id).run();
   }else await env.DB.prepare('DELETE FROM writer_subscriptions WHERE subscriber_id=? AND writer_id=?').bind(actor.id,id).run();
   const subscribed=Boolean(await env.DB.prepare('SELECT 1 FROM writer_subscriptions WHERE subscriber_id=? AND writer_id=?').bind(actor.id,id).first());
   return json({subscribed});

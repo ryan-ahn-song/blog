@@ -32,11 +32,11 @@ export async function handleWriters(request: Request, env: AuthEnv & {MEDIA_BASE
   const path=new URL(request.url).pathname;
   let writerId=path.match(/^\/api\/writers\/([\w-]+)$/)?.[1];
   const handle=path.match(/^\/api\/writers\/by-name\/([^/]+)$/)?.[1];
-  if(handle){let name;try{name=decodeURIComponent(handle);}catch{throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');}const alias=await env.DB.prepare('SELECT user_id FROM username_aliases WHERE username_key=?').bind(usernameKey(name)).first<{user_id:string}>();if(!alias)throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');writerId=alias.user_id;}
+  if(handle){let name;try{name=decodeURIComponent(handle);}catch{throw new HttpError(404,'프로필을 찾을 수 없습니다.');}const alias=await env.DB.prepare('SELECT user_id FROM username_aliases WHERE username_key=?').bind(usernameKey(name)).first<{user_id:string}>();if(!alias)throw new HttpError(404,'프로필을 찾을 수 없습니다.');writerId=alias.user_id;}
   if(writerId){
     const actor=await currentUser(request,env);
-    const writer=await env.DB.prepare("SELECT u.id,u.name,u.username,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR u.id=? OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(writerId,actor?.id??'').first<WriterRow>();
-    if(!writer)throw new HttpError(404,'필자 프로필을 찾을 수 없습니다.');
+    const writer=await env.DB.prepare("SELECT u.id,u.name,u.username,u.bio,u.avatar_key,u.cover_key,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='post') AS post_count,(SELECT count(*) FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.kind='notice') AS notice_count FROM auth_users u WHERE u.id=? AND u.disabled=0").bind(writerId).first<WriterRow>();
+    if(!writer)throw new HttpError(404,'프로필을 찾을 수 없습니다.');
     const subscribed=actor?Boolean(await env.DB.prepare('SELECT 1 FROM writer_subscriptions WHERE subscriber_id=? AND writer_id=?').bind(actor.id,writerId).first()):false;
     const reads=await env.DB.prepare("SELECT coalesce(sum(r.views),0) AS total_views FROM post_reads r JOIN posts p ON p.id=r.post_id WHERE p.author_id=? AND p.status='published'").bind(writerId).first<{total_views:number}>();
     return json({writer:{...writerData(writer,request,env),subscribed,total_views:reads?.total_views??0}});
@@ -44,9 +44,9 @@ export async function handleWriters(request: Request, env: AuthEnv & {MEDIA_BASE
   const params = new URL(request.url).searchParams;
   const q = (params.get('q') ?? '').trim().slice(0,100), topic = params.get('topic'), category = params.get('category');
   if (category && !['all','tech','life'].includes(category)) throw new HttpError(400,'분류를 확인해 주세요.');
-  const clauses = ["u.role IN ('author','admin')", 'u.disabled=0'];
+  const clauses = ['u.disabled=0'];
   const values: string[] = [];
-  if (q) { clauses.push("(instr(lower(u.name||' '||u.bio),lower(?))>0 OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND (instr(lower(p.title||' '||p.summary||' '||p.body),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0) OR EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND instr(lower(l.name),lower(?))>0))))"); values.push(q,q,q,q); }
+  if (q) { clauses.push("(instr(lower(u.name||' '||coalesce(u.username,'')||' '||u.bio),lower(?))>0 OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND (instr(lower(p.title||' '||p.summary||' '||p.body),lower(?))>0 OR EXISTS(SELECT 1 FROM json_each(p.topic_ids) j JOIN topics t ON t.id=j.value WHERE instr(lower(t.name),lower(?))>0) OR EXISTS(SELECT 1 FROM post_writer_labels pl JOIN writer_labels l ON l.id=pl.label_id WHERE pl.post_id=p.id AND instr(lower(l.name),lower(?))>0))))"); values.push(q,q,q,q); }
   if (topic && topic !== 'all') { clauses.push("EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND EXISTS(SELECT 1 FROM json_each(p.topic_ids) j WHERE j.value=?))"); values.push(topic); }
   if (category && category !== 'all') { clauses.push("EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published' AND p.category=?)"); values.push(category); }
   const page = Math.max(0,Math.min(100000,Number(params.get('page'))||0))|0;

@@ -84,7 +84,7 @@ try {
   const accountInfo=await (await call('/api/auth/account?user=legacy',{cookie:readerCookie})).json();
   assert.equal(accountInfo.user.id,reader.id);assert.equal(accountInfo.connections.google,true);assert.equal(accountInfo.connections.github,false);assert.equal(accountInfo.google_available,true);assert.ok(!JSON.stringify(accountInfo).includes('subject'));
   assert.equal((await call('/api/auth/account',{method:'POST',cookie:readerCookie,body:{}})).status,405);
-  assert.equal((await call('/api/writers/'+reader.id)).status,404,'Unpublished reader accounts are private');
+  assert.equal((await call('/api/writers/'+reader.id)).status,200,'Active reader profiles are public even before posting');
   assert.equal((await call('/api/writers/'+reader.id,{cookie:readerCookie})).status,200,'Readers can open their own profile');
   const adminCookie=await login(owner,'google-owner');
   const admin=(await (await call('/api/auth/me',{cookie:adminCookie})).json()).user;

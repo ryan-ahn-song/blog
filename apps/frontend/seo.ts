@@ -12,7 +12,7 @@ function text(value:any):string{
  if(typeof value.text==='string')return value.text;
  return [text(value.content??value.rows??value.cells),text(value.children)].filter(Boolean).join(' ');
 }
-export function description(page:PublicPage){return (page.summary||plainBio(page.bio)||text(page.body_doc)||page.body||'21st ARK에서 포스트를 읽고 필자를 만나보세요.').replace(/[#*`>\[\]]/g,'').replace(/\s+/g,' ').trim().slice(0,240);}
+export function description(page:PublicPage){return (page.summary||plainBio(page.bio)||text(page.body_doc)||page.body||'21st ARK에서 포스트를 읽고 멤버를 만나보세요.').replace(/[#*`>\[\]]/g,'').replace(/\s+/g,' ').trim().slice(0,240);}
 function documentHtml(page:PublicPage){
  if(Array.isArray(page.body_doc))return page.body_doc.map((block:any)=>{
   const content=htmlEscape(text(block.content)),children=Array.isArray(block.children)?documentHtml({...page,body_doc:block.children}):'';
@@ -27,11 +27,11 @@ function documentHtml(page:PublicPage){
 }
 function postLinks(posts:any[]=[]){return posts.map(post=>`<article><h2><a href="${htmlEscape(post.path)}">${htmlEscape(post.title)}</a></h2><p>${htmlEscape(post.summary)}</p>${post.writer?`<a href="${htmlEscape(writerPath(post.writer))}">${htmlEscape(post.writer.name)}</a>`:''}</article>`).join('');}
 export function pageHtml(page:PublicPage){
- if(page.type==='app')return `<main class="seo-page"><a href="/home">21st ARK</a><h1>${htmlEscape(page.title)}</h1><p>페이지를 불러오고 있어요. 계정에 보관된 정보는 로그인 후 확인할 수 있습니다.</p><a href="/people">필자 둘러보기</a></main>`;
- if(page.type==='people')return `<main class="seo-page"><a href="/home">21st ARK</a><h1>필자</h1>${(page.writers??[]).map(writer=>`<article><h2><a href="${htmlEscape(writer.path)}">${htmlEscape(writer.name)}</a></h2><p>${htmlEscape(plainBio(writer.bio))}</p></article>`).join('')}</main>`;
+ if(page.type==='app')return `<main class="seo-page"><a href="/home">21st ARK</a><h1>${htmlEscape(page.title)}</h1><p>페이지를 불러오고 있어요. 계정에 보관된 정보는 로그인 후 확인할 수 있습니다.</p><a href="/people">멤버 둘러보기</a></main>`;
+ if(page.type==='people')return `<main class="seo-page"><a href="/home">21st ARK</a><h1>멤버</h1>${(page.writers??[]).map(writer=>`<article><h2><a href="${htmlEscape(writer.path)}">${htmlEscape(writer.name)}</a></h2><p>${htmlEscape(plainBio(writer.bio))}</p></article>`).join('')}</main>`;
  if(page.type==='post')return `<main class="seo-page"><a href="/home">21st ARK</a><article><header><h1>${htmlEscape(page.title)}</h1><p>${htmlEscape(page.summary)}</p><a href="${htmlEscape(writerPath(page.writer!))}">${htmlEscape(page.writer!.name)}</a></header>${page.image?`<img src="${htmlEscape(page.image)}" alt="${htmlEscape(page.title)}"/>`:''}${documentHtml(page)}</article></main>`;
  if(page.type==='writer')return `<main class="seo-page"><a href="/home">21st ARK</a><h1>${htmlEscape(page.name)}</h1><p>@${htmlEscape(page.username)}</p><p>${htmlEscape(plainBio(page.bio))}</p><h2>포스트와 공지</h2>${postLinks(page.posts)}</main>`;
- return `<main class="seo-page"><h1>21st ARK</h1><p>개발과 기술, 일상과 에세이를 읽고 나누는 공간</p><h2>최신 포스트</h2>${postLinks(page.posts)}<h2>필자</h2>${(page.writers??[]).map(writer=>`<p><a href="${htmlEscape(writer.path)}">${htmlEscape(writer.name)}</a> ${htmlEscape(plainBio(writer.bio))}</p>`).join('')}</main>`;
+ return `<main class="seo-page"><h1>21st ARK</h1><p>개발과 기술, 일상과 에세이를 읽고 나누는 공간</p><h2>최신 포스트</h2>${postLinks(page.posts)}<h2>멤버</h2>${(page.writers??[]).map(writer=>`<p><a href="${htmlEscape(writer.path)}">${htmlEscape(writer.name)}</a> ${htmlEscape(plainBio(writer.bio))}</p>`).join('')}</main>`;
 }
 export function metadata(page:PublicPage){
  const title=page.type==='post'?page.title:page.type==='writer'?page.name:page.title||'홈',desc=description(page),url=absolute(page.path),image=absolute(page.image??'/assets/social-default.png'),type=page.type==='post'?'article':page.type==='writer'?'profile':'website';
@@ -49,7 +49,7 @@ export async function loadPublicPage(url:URL,env:Env){
   return {status:200,page:{type:'app',path:viewPath(route.view),title,indexable:false} as PublicPage};
  }
  const params=new URLSearchParams();if(route.type==='post')params.set('post_id',route.id!);else if(route.type==='writer')params.set('username',route.username!);
- try{const response=await env.API.fetch(new Request(CANONICAL_ORIGIN+'/api/seo/page?'+params,{headers:{Accept:'application/json'}}));if(!response.ok)return {status:response.status===404?404:503,page:null};const page=await response.json() as PublicPage;if(route.type==='view'){page.type=route.view==='writers'?'people':'home';page.path=viewPath(route.view);page.title=route.view==='writers'?'필자':'홈';}return {status:200,page};}catch{return {status:503,page:null};}
+ try{const response=await env.API.fetch(new Request(CANONICAL_ORIGIN+'/api/seo/page?'+params,{headers:{Accept:'application/json'}}));if(!response.ok)return {status:response.status===404?404:503,page:null};const page=await response.json() as PublicPage;if(route.type==='view'){page.type=route.view==='writers'?'people':'home';page.path=viewPath(route.view);page.title=route.view==='writers'?'멤버':'홈';}return {status:200,page};}catch{return {status:503,page:null};}
 }
 export function applyPublicHtml(source:string,page:PublicPage|null,status:number){
  const clean=source.replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi,'').replace(/<link\b(?=[^>]*rel=["']canonical["'])[^>]*>/gi,'').replace(/<meta\b(?=[^>]*(?:name=["'](?:description|robots|twitter:[^"']+)["']|property=["']og:[^"']+["']))[^>]*>/gi,'');

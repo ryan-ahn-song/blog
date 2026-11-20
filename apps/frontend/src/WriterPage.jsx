@@ -24,8 +24,8 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
     try{const result=await api('/api/writers/'+id+'/subscription',jsonRequest('PUT',{active:!writer.subscribed}));if(activeUser.current!==actorId)return;setWriter(previous=>previous?{...previous,subscribed:result.subscribed}:previous);onSubscriptionChange();}
     catch(e){if(activeUser.current===actorId)setSubscriptionError(e.message);}finally{setSubscribing(false);}
   }
-  if(error)return <div className="writer-page-message"><p className="auth-error" role="alert">{error}</p><button className="pill" onClick={()=>setRetry(n=>n+1)}>다시 시도</button><button className="pill" data-view="writers">필자 목록</button></div>;
-  if(!writer)return <p className="writer-page-message" role="status">필자 프로필을 불러오고 있어요.</p>;
+  if(error)return <div className="writer-page-message"><p className="auth-error" role="alert">{error}</p><button className="pill" onClick={()=>setRetry(n=>n+1)}>다시 시도</button><button className="pill" data-view="writers">멤버 목록</button></div>;
+  if(!writer)return <p className="writer-page-message" role="status">프로필을 불러오고 있어요.</p>;
   return <article className="writer-page">
     <div className={'writer-cover '+(!writer.cover_url?'no-cover':'')}>{writer.cover_url&&<img src={writer.cover_url} alt={writer.name+'의 커버'} fetchPriority="high"/>}</div>
     <div className="writer-profile-body">
@@ -34,7 +34,7 @@ export default function WriterPage({id,user,version,taxonomyVersion,filters,onFi
       </div></div>
       {subscriptionError&&<p className="auth-error" role="alert">{subscriptionError}</p>}
       <div className="writer-about"><div><h2>{writer.name}</h2><ProfileBio value={writer.bio}/></div><dl className="writer-stats"><div><dt>업로드한 포스트</dt><dd>{writer.post_count.toLocaleString()}</dd></div><div><dt>총 조회수</dt><dd>{(writer.total_views??0).toLocaleString()}</dd></div></dl></div>
-      <nav className="writer-tabs" aria-label="필자 페이지">{[['post','포스트',writer.post_count],['notice','공지',writer.notice_count??0]].map(([kind,label,count])=><button key={kind} aria-pressed={(filters.kind??'post')===kind} onClick={()=>onFilter('kind',kind)}>{label} <span>{count}</span></button>)}</nav>
+      <nav className="writer-tabs" aria-label="프로필">{[['post','포스트',writer.post_count],['notice','공지',writer.notice_count??0]].map(([kind,label,count])=><button key={kind} aria-pressed={(filters.kind??'post')===kind} onClick={()=>onFilter('kind',kind)}>{label} <span>{count}</span></button>)}</nav>
       <div className={'writer-post-layout '+(filters.kind==='notice'?'notice':'')}><section className="writer-posts" id="writer-posts" aria-labelledby="writer-posts-heading"><div className="writer-posts-heading"><h3 id="writer-posts-heading">{filters.kind==='notice'?'공지':filters.category||filters.tag?'분류한 포스트':'최신 포스트'}</h3>{(filters.category||filters.tag)&&<button onClick={()=>onFilter('clear')}>필터 지우기 ×</button>}</div>{children}</section>{filters.kind!=='notice'&&<WriterTaxonomySidebar writerId={id} user={user} total={writer.post_count} version={taxonomyVersion+':'+version} filters={filters} onFilter={onFilter} onChanged={onTaxonomyChanged}/>}</div>
     </div>
     <dialog ref={dialog} className="auth-dialog writer-edit-dialog" aria-labelledby="writer-edit-title" onCancel={event=>{if(busy)event.preventDefault();else setEditing(false);}} onClose={()=>setEditing(false)}>

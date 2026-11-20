@@ -25,7 +25,7 @@ try {
   for(const role of [null,'reader','author','admin']){
     const shell=renderToString(createElement(AppShell,{view:'home',title:'홈',query:'',onSearch:()=>{},category:'all',people:[],popularTopics:[],user:role?{name:'메뉴 확인',role}:null}));
     assert.ok(!shell.includes('data-view="admin"'),'No member-management shortcut in the page header');
-    assert.ok(!shell.includes('<footer'),'No sidebar footer');assert.ok(shell.includes('트랜딩'));assert.ok(shell.includes('내가 구독한 필자'));
+    assert.ok(!shell.includes('<footer'),'No sidebar footer');assert.ok(shell.includes('트랜딩'));assert.ok(shell.includes('내가 구독한 멤버'));
     const nav=shell.match(/<nav[^>]*>([\s\S]*?)<\/nav>/)[1];
     assert.equal(nav.includes('data-view="profile"'),false);
     assert.equal(nav.includes('rail-divider'),['author','admin'].includes(role));

@@ -13,8 +13,8 @@ export async function taxonomyForActor(request:Request,env:AuthEnv,actor:UserRow
   if(request.method==='GET'&&!labelId){
     const manage=url.searchParams.get('scope')==='manage';
     if(manage&&(!actor||(actor.id!==writerId&&actor.role!=='admin')))throw new HttpError(actor?403:401,'본인의 분류와 태그만 관리할 수 있습니다.');
-    const writer=await env.DB.prepare("SELECT id FROM auth_users u WHERE u.id=? AND u.disabled=0 AND (u.role IN ('author','admin') OR u.id=? OR EXISTS(SELECT 1 FROM posts p WHERE p.author_id=u.id AND p.status='published'))").bind(writerId,actor?.id??'').first();
-    if(!writer)throw new HttpError(404,'필자를 찾을 수 없습니다.');
+    const writer=await env.DB.prepare("SELECT id FROM auth_users u WHERE u.id=? AND u.disabled=0").bind(writerId).first();
+    if(!writer)throw new HttpError(404,'프로필을 찾을 수 없습니다.');
     const count="(SELECT count(*) FROM post_writer_labels pl JOIN posts p ON p.id=pl.post_id WHERE pl.label_id=l.id AND p.status='published' AND p.kind='post')";
     const rows=await env.DB.prepare('SELECT l.id,l.kind,l.name,'+count+' AS post_count FROM writer_labels l WHERE l.writer_id=?'+(manage?'':' AND '+count+'>0')+' ORDER BY l.created_at,l.id').bind(writerId).all<Label>();
     return json({writer_id:writerId,categories:rows.results.filter(row=>row.kind==='category'),tags:rows.results.filter(row=>row.kind==='tag')});
