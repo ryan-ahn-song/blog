@@ -134,7 +134,7 @@ export async function handleMcpOAuth(request:Request,env:McpEnv,ctx:ExecutionCon
       const id=randomUUID();
       await env.DB.prepare('INSERT INTO mcp_connections(id,user_id,client_id,client_name,client_domain,redirect_host,scope,consent_version,login_version,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id,user.id,auth.clientId,description.clientName.slice(0,120),description.clientDomain??null,description.redirectHost,JSON.stringify([...new Set(scope)]),legal.version,user.login_version,now()+(scope.includes('offline_access')?30*86400:600)).run();
       try{
-        const result=await api.completeAuthorization({request:auth,userId:user.id,scope,metadata:{connectionId:id,clientName:description.clientName.slice(0,120)},props:{userId:user.id,connectionId:id,loginVersion:user.login_version} satisfies McpProps,revokeExistingGrants:false});
+        const result=await api.completeAuthorization({request:auth,userId:user.id,scope,metadata:{connectionId:id,clientName:description.clientName.slice(0,120)},props:{userId:user.id,connectionId:id,loginVersion:user.login_version} satisfies McpProps});
         const grantId=new URL(result.redirectTo).searchParams.get('code')?.split(':')[1];
         if(grantId)await env.DB.prepare('UPDATE mcp_connections SET grant_id=? WHERE id=?').bind(grantId,id).run();
         return json({redirect:result.redirectTo},200,headers);
