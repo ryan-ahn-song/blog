@@ -1,10 +1,10 @@
 # Home and search advertising
 
-Home places a labelled AdFit slot directly after the first organic post, so the
-second feed item is always the ad placement. Further slots follow every seven
-organic posts (after organic posts 1, 8, 15, 22, ...). Search retains slots after
-organic posts 7, 14, 21, ... and at least one after the last result when there are
-1–6 results. Empty lists show no ad. Organic ordering and pagination stay intact.
+Home and search place a labelled AdFit slot after every three organic posts
+(after organic posts 3, 6, 9, 12, ...). Lists with only 1–2 posts retain one slot
+after the last post. Empty lists show no ad. Counts exclude advertisements and
+continue across appended pages. Pinned posts count as organic posts, so their
+ordering remains intact and the first ad follows the third post.
 Ad rendering still depends on AdFit fill, privacy preferences and available width.
 Ads are not stored as posts and do not change totals, likes or bookmarks.
 Search uses a matching card within the latest/results grid. Writer pages, saved
@@ -19,6 +19,8 @@ creative or disguise it as an author's post; `광고` / `AD` remain visible.
 
 Media: `21st ARK`, `https://21st-ark.dev`, media ID `NJa`.
 Three public placement IDs are configured in `apps/frontend/src/adfit.js`:
+The existing publisher inventory names below retain their original “7개 간격”
+labels; placement frequency is controlled by the website and is now three posts.
 
 | Name | Ad unit | Size |
 | --- | --- | --- |
