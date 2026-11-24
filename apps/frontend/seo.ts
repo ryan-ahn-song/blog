@@ -1,6 +1,6 @@
 import {bootHtml,bootKind} from './boot';
 import {plainBio} from '../../shared/bio';
-import {CANONICAL_ORIGIN} from '../../shared/site';
+import {CANONICAL_ORIGIN,DEFAULT_SOCIAL_IMAGE} from '../../shared/site';
 import {pageRoute,viewPath,writerPath} from '../../shared/paths';
 type PublicPage={type:string;path:string;indexable?:boolean;title?:string;summary?:string;name?:string;username?:string;bio?:string;body?:string;body_doc?:unknown;image?:string;writer?:{name:string;username:string;id:string};published_at?:number;updated_at?:number;posts?:any[];writers?:any[]};
 type Env={API:Fetcher};
@@ -35,7 +35,7 @@ export function pageHtml(page:PublicPage){
  return `<main class="seo-page"><h1>21st ARK</h1><p>개발과 기술, 일상과 에세이를 읽고 나누는 공간</p><h2>최신 포스트</h2>${postLinks(page.posts)}<h2>멤버</h2>${(page.writers??[]).map(writer=>`<p><a href="${htmlEscape(writer.path)}">${htmlEscape(writer.name)}</a> ${htmlEscape(plainBio(writer.bio))}</p>`).join('')}</main>`;
 }
 export function metadata(page:PublicPage){
- const title=page.type==='post'?page.title:page.type==='writer'?page.name:page.title||'홈',desc=description(page),url=absolute(page.path),image=absolute(page.image??'/assets/social-default.png'),type=page.type==='post'?'article':page.type==='writer'?'profile':'website';
+ const title=page.type==='post'?page.title:page.type==='writer'?page.name:page.title||'홈',desc=description(page),url=absolute(page.path),image=absolute(page.image&&page.image!=='/assets/social-default.png'?page.image:DEFAULT_SOCIAL_IMAGE),type=page.type==='post'?'article':page.type==='writer'?'profile':'website';
  const tags=[`<title>${htmlEscape(title)} | 21st ARK</title>`,`<link rel="canonical" href="${htmlEscape(url)}"/>`,`<meta name="description" content="${htmlEscape(desc)}"/>`,`<meta name="robots" content="index,follow,max-image-preview:large"/>`,...Object.entries({'og:title':title+' | 21st ARK','og:description':desc,'og:type':type,'og:url':url,'og:image':image,'og:image:secure_url':image,'og:image:alt':page.type==='post'?page.title:page.name||'21st ARK','og:site_name':'21st ARK','og:locale':'ko_KR'}).map(([name,value])=>`<meta property="${name}" content="${htmlEscape(value)}"/>`),...Object.entries({'twitter:card':'summary_large_image','twitter:title':title+' | 21st ARK','twitter:description':desc,'twitter:image':image}).map(([name,value])=>`<meta name="${name}" content="${htmlEscape(value)}"/>`)];
  const schema=page.type==='post'?{'@context':'https://schema.org','@type':'BlogPosting',headline:page.title,description:desc,url,mainEntityOfPage:url,image,author:{'@type':'Person',name:page.writer!.name,url:absolute(writerPath(page.writer!))},datePublished:new Date(page.published_at!*1000).toISOString(),dateModified:new Date(page.updated_at!*1000).toISOString()}:page.type==='writer'?{'@context':'https://schema.org','@type':'ProfilePage',url,mainEntity:{'@type':'Person',name:page.name,identifier:page.username,description:desc,url}}:{'@context':'https://schema.org','@type':'WebSite',name:'21st ARK',url:CANONICAL_ORIGIN};
  if(page.indexable===false)return tags.join('').replace('index,follow,max-image-preview:large','noindex,nofollow');

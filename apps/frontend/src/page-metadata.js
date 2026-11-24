@@ -1,11 +1,11 @@
 import {writerPath,postPath,viewPath} from '../../../shared/paths';
 import {plainBio} from '../../../shared/bio';
-import {CANONICAL_ORIGIN} from '../../../shared/site';
+import {CANONICAL_ORIGIN,DEFAULT_SOCIAL_IMAGE} from '../../../shared/site';
 export function setPageMetadata({article,author,view,routeError}){
   const published=article?.status==='published',profile=!article&&view==='author'&&author?.username;
   const path=article?postPath(article):profile?writerPath(author):viewPath(view),url=new URL(path,CANONICAL_ORIGIN).href;
   const title=article?.title||(profile?author.name:'21st ARK'),description=(article?.summary||(profile?plainBio(author.bio):'')||'개발과 기술, 일상과 에세이의 포스트를 읽고 나눠 보세요.').slice(0,240);
-  const image=new URL(published&&article.image_key?'/api/social/posts/'+article.id+'/image':profile&&(author.cover_url||author.avatar_url)?'/api/social/writers/'+author.id+'/image':'/assets/social-default.png',CANONICAL_ORIGIN).href;
+  const image=new URL(published&&article.image_key?'/api/social/posts/'+article.id+'/image':profile&&(author.cover_url||author.avatar_url)?'/api/social/writers/'+author.id+'/image':DEFAULT_SOCIAL_IMAGE,CANONICAL_ORIGIN).href;
   let canonical=document.querySelector('link[rel="canonical"]');if(!canonical){canonical=document.createElement('link');canonical.rel='canonical';document.head.append(canonical);}canonical.href=url;
   function meta(key,value,property=false){let element=document.head.querySelector('meta['+(property?'property':'name')+'="'+key+'"]');if(!element){element=document.createElement('meta');element.setAttribute(property?'property':'name',key);document.head.append(element);}element.content=value;}
   for(const [key,value]of Object.entries({'og:title':title+' | 21st ARK','og:description':description,'og:url':url,'og:image':image,'og:image:secure_url':image,'og:image:alt':article?.title||(profile?author.name:'21st ARK'),'og:type':article?'article':profile?'profile':'website'}))meta(key,value,true);
