@@ -1,6 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AppShell from './AppShell';
-import FeedAd,{isFeedAdPosition} from './FeedAd';
+import FeedAd from './FeedAd';
+import {adPositionsFor} from './ad-positions';
 import LoadingSkeleton from './LoadingSkeleton';
 import AuthDialog from './AuthDialog';
 import SignupDialog from './SignupDialog';
@@ -56,6 +57,8 @@ export default function App() {
   const criteria = JSON.stringify({ pin_first:view==='home'?'1':undefined, kind:view==='author'?(writerFilters.kind??'post'):undefined, bookmarked: view === 'saved' ? '1' : undefined, subscribed:view==='subscriptions'?'1':undefined, q: view === 'search' ? query.trim() : undefined, category, author: author?.id, topic: view === 'search' ? topicId : undefined,writer_category:view==='author'?writerFilters.category??undefined:undefined,writer_tag:view==='author'?writerFilters.tag??undefined:undefined });
   const feedKey = criteria + ':' + (user?.id ?? 'anonymous')+':'+version+':'+subscriptionVersion+':'+taxonomyVersion;
   const currentFeed = feed.key === feedKey ? feed : feedCache.current.get(feedKey)??{ ...emptyFeed, key: feedKey };
+  const [adSeed]=useState(()=>Math.floor(Math.random()*0x100000000));
+  const adPositions=useMemo(()=>adPositionsFor(currentFeed.posts.length,currentFeed.total,adSeed+':'+feedKey),[currentFeed.posts.length,currentFeed.total,adSeed,feedKey]);
   const searchKey=JSON.stringify([query.trim(),topicId,version]);
   const currentSearchWriters=searchWriters.key===searchKey?searchWriters:{writers:[],loading:true,error:''};
   const title = author ? author.name || '프로필' : category !== 'all' ? topicName(topics, category) : { author:'프로필',home: '홈', search: '검색', writers: '멤버', saved: '저장한 포스트', subscriptions:'구독한 포스트', write: '포스트 작성', 'my-posts': '내 포스트 관리', admin: '멤버 관리' }[view];
@@ -295,9 +298,9 @@ export default function App() {
 
   else if (view === 'writers') content = catalogLoading ? <LoadingSkeleton variant="members" label="멤버를 불러오고 있어요."/> : catalogError ? null : writers.length ? <><WriterList writers={writers}/>{writers.length < writerTotal && <button className="pill load-more" onClick={moreWriters}>멤버 더 보기</button>}</> : <EmptyState title="아직 등록된 멤버가 없어요."/>;
   else if (['saved','subscriptions'].includes(view) && !user) content = authChecking ? <LoadingSkeleton variant={view==='write'?'editor':view==='my-posts'?'dashboard':view==='admin'?'rows':'feed'} label="로그인 상태를 확인하고 있어요."/> : <EmptyState title={view==='subscriptions'?'구독한 멤버의 새 포스트를 모아 보세요.':'저장한 포스트를 계정에서 모아 보세요.'} action="로그인" onAction={() => setAuthOpen(true)}>로그인하면 다른 기기에서도 이어서 볼 수 있어요.</EmptyState>;
-  else if (view === 'search') content = <Explore topics={topics} writers={currentSearchWriters.writers} writersLoading={currentSearchWriters.loading} writersError={currentSearchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error} adsEnabled={adsEnabled}/>;
+  else if (view === 'search') content = <Explore adPositions={adPositions} topics={topics} writers={currentSearchWriters.writers} writersLoading={currentSearchWriters.loading} writersError={currentSearchWriters.error} posts={currentFeed.posts} total={currentFeed.total} query={query} topicId={topicId} loading={currentFeed.loading} error={currentFeed.error} adsEnabled={adsEnabled}/>;
   else if (currentFeed.loading && !currentFeed.posts.length) content = <LoadingSkeleton/>;
-  else if (currentFeed.posts.length) content = currentFeed.posts.flatMap((p, i) => [<PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>,...(view==='home'&&isFeedAdPosition(i,currentFeed.posts.length)?[<FeedAd key={'ad-after-'+p.id} after={i+1} enabled={adsEnabled}/>]:[])]);
+  else if (currentFeed.posts.length) content = currentFeed.posts.flatMap((p, i) => [<PostCard key={p.id} post={p} topics={topics} first={i === 0} pending={pending}/>,...(view==='home'&&adPositions.has(i+1)?[<FeedAd key={'ad-after-'+p.id} after={i+1} enabled={adsEnabled}/>]:[])]);
   else if (!currentFeed.error) content = <EmptyState title={view==='author'&&writerFilters.kind==='notice'?'아직 업로드된 공지가 없어요.':view==='subscriptions'?'구독한 멤버의 새 포스트가 없어요.':view === 'saved' ? '아직 저장한 포스트가 없어요.' : author || category !== 'all' ? '아직 업로드된 포스트가 없어요.' : '아직 업로드된 포스트가 없어요.'} action={!['saved','subscriptions'].includes(view) && !(view==='author'&&writerFilters.kind==='notice') && canStartPost ? '첫 포스트 작성' : undefined} onAction={() => navigate('write')}>{view==='subscriptions'?<>프로필에서 구독하면 새 포스트를 이곳에서 볼 수 있어요. <button className="text-button" data-view="writers">멤버 둘러보기</button></>:view==='author'&&writerFilters.kind==='notice'?(canStartPost?'상단의 포스트 작성에서 게시 종류를 공지로 선택해 보세요.':'새로운 공지가 올라오면 이곳에서 읽을 수 있어요.'):view === 'saved' ? '포스트 아래의 책갈피를 눌러 모아 보세요.' : canStartPost ? '첫 번째 포스트를 작성해 보세요.' : '새로운 포스트가 올라오면 이곳에서 읽을 수 있어요.'}</EmptyState>;
 
   return <>

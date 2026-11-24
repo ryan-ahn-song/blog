@@ -32,25 +32,35 @@ const {createElement}=await import('react'),{createRoot}=await import('react-dom
 const vite=await createServer({root:fileURLToPath(new URL('../apps/frontend',import.meta.url)),server:{middlewareMode:true},appType:'custom'});
 try{
  const {default:App}=await vite.ssrLoadModule('/src/App.jsx'),{clearApiCache}=await vite.ssrLoadModule('/src/api.js');
+ const {adPositionsFor}=await vite.ssrLoadModule('/src/ad-positions.js');
+ const gapsSeen=new Set(),layouts=new Set();
+ for(let seed=0;seed<100;seed++){
+  const full=[...adPositionsFor(100,100,seed)];layouts.add(full.join(','));let before=0;
+  for(const after of full){assert(after-before>=3&&after-before<=5,'Each random gap is 3–5 organic posts');gapsSeen.add(after-before);before=after;}
+  for(const length of [0,1,2,3,4,11,22,57])assert.deepEqual([...adPositionsFor(length,100,seed)],full.filter(after=>after<=length),'Appending pages preserves existing positions');
+ }
+ assert.deepEqual([...gapsSeen].sort(),[3,4,5]);assert(layouts.size>1,'Different page seeds vary placement');
+ for(const length of [0,1,2])assert.deepEqual([...adPositionsFor(length,length,'short')],length?[length]:[]);
+ const positions=()=>[...document.querySelectorAll('.feed-ad')].map(el=>Number(el.dataset.adAfter));
+ function checkSpacing(after,count){assert(after.length>0);let previous=0;for(const value of after){assert(value-previous>=3&&value-previous<=5,'Random route spacing remains 3–5');previous=value;}assert(count-previous<5);}
  async function mount(path='/home'){root?.unmount();await pause();clearApiCache();history.replaceState(null,'',path);root=createRoot(document.getElementById('root'));root.render(createElement(App));await wait(()=>path.startsWith('/search')?(count?document.querySelector('.explore-result'):document.body.textContent.includes('일치하는 포스트가 없어요.')):document.querySelector('#feed article.post')||document.querySelector('#feed .empty'),'Feed loads');}
  for(const path of ['/home','/search'])for(const size of [0,1,2,3,4,5,6,7,8,9,10]){
   count=size;await mount(path);
-  const interval=path==='/search'?4:3;
-  const expected=size<interval?(size?[size]:[]):Array.from({length:Math.floor(size/interval)},(_,i)=>(i+1)*interval);
-  assert.deepEqual([...document.querySelectorAll('.feed-ad')].map(el=>Number(el.dataset.adAfter)),expected,'Route-specific cadence and minimum-one rule: '+path+' '+size);
+  const expected=positions();
+  if(size<3)assert.deepEqual(expected,size?[size]:[]);else checkSpacing(expected,size);
   const entries=path==='/home'?[...document.querySelector('#feed').children].filter(el=>el.matches('.post')):[...document.querySelector('.explore-results')?.children??[]];
   let organic=0;const actual=[];for(const entry of entries){if(entry.matches('.feed-ad'))actual.push(organic);else organic++;}
   assert.deepEqual(actual,expected,'Ads follow the counted organic posts');
   assert(!document.querySelector('#ark-adfit-sdk'),'Offscreen slots never request SDK');
  }
  assert(feedQueries.some(url=>url.searchParams.get('pin_first')==='1'),'Home requests pin-first ordering');assert(feedQueries.some(url=>!url.searchParams.has('pin_first')),'Search retains latest ordering');
- count=29;await mount();await wait(()=>document.querySelectorAll('#feed article.post').length===11,'First page loads');assert.deepEqual([...document.querySelectorAll('.feed-ad')].map(el=>el.dataset.adAfter),['3','6','9']);
+ count=29;await mount();await wait(()=>document.querySelectorAll('#feed article.post').length===11,'First page loads');const firstPageAds=positions();checkSpacing(firstPageAds,11);
  click('.load-more');await wait(()=>document.querySelectorAll('#feed article.post').length===22,'Append page two');click('.load-more');await wait(()=>document.querySelectorAll('#feed article.post').length===29,'Append page three');
  const cards=[...document.querySelector('#feed').children].filter(el=>el.matches('.post'));
- const adPositions=cards.flatMap((el,i)=>el.matches('.feed-ad')?[i]:[]);assert.deepEqual(adPositions,[3,7,11,15,19,23,27,31,35],'Cadence remains correct across API pages');assert.equal(document.querySelectorAll('#feed article.post').length,29,'Ads never replace organic posts');assert(!document.querySelector('#ark-adfit-sdk'),'Offscreen slots do not load SDK');
- await wait(()=>intersections.filter(item=>!item.closed).length===9,'All ad effects mounted');
+ const allAds=positions(),adCount=allAds.length;checkSpacing(allAds,29);assert.deepEqual(allAds.filter(after=>after<=11),firstPageAds,'Existing slots remain stable after loading more');assert.equal(document.querySelectorAll('#feed article.post').length,29,'Ads never replace organic posts');assert(!document.querySelector('#ark-adfit-sdk'),'Offscreen slots do not load SDK');
+ await wait(()=>intersections.filter(item=>!item.closed).length===adCount,'All ad effects mounted');
  for(const size of sizes.filter(item=>!item.closed&&item.element.matches('.feed-ad-stage')))size.callback([{contentRect:{width:600}}]);
- const active=intersections.filter(item=>!item.closed);assert.equal(active.length,9);active[0].callback([{isIntersecting:true}]);await wait(()=>document.querySelector('#ark-adfit-sdk'),'Visible ad loads SDK');
+ const active=intersections.filter(item=>!item.closed);assert.equal(active.length,adCount);active[0].callback([{isIntersecting:true}]);await wait(()=>document.querySelector('#ark-adfit-sdk'),'Visible ad loads SDK');
  const script=document.querySelector('#ark-adfit-sdk');assert.equal(script.src,'https://t1.kakaocdn.net/kas/static/ba.min.js');assert(script.async);
  const renders=[],destroyed=[],occupied=new Set(),events=[];
  window.adfit={render(element){const unit=element.dataset.adUnit;assert(!occupied.has(unit),'No simultaneous duplicate unit');occupied.add(unit);renders.push(element);events.push('render:'+unit);element.style.display='block';const creative=document.createElement('span');creative.textContent='검증용 광고';element.append(creative);},destroy(element){occupied.delete(element.dataset.adUnit);destroyed.push(element);events.push('destroy:'+element.dataset.adUnit);}};
@@ -58,10 +68,10 @@ try{
  active[0].callback([{isIntersecting:false}]);await wait(()=>renders.length===4,'Released unit serves later slot');assert.equal(destroyed.length,1);assert.equal(occupied.size,3);assert(events.indexOf('destroy:'+renders[0].dataset.adUnit)<events.lastIndexOf('render:'+renders[0].dataset.adUnit));
  active[3].callback([{isIntersecting:true}]);await pause();assert.equal(renders.length,4,'Observer updates do not refresh an existing ad');
  const adControl=document.createElement('button');adControl.dataset.view='search';renders.at(-1).append(adControl);adControl.click();await pause();assert.equal(location.pathname,'/home','Ad controls cannot invoke blog navigation/reaction delegation');adControl.remove();
- const fail=renders.at(-1).dataset.adOnfail;window[fail]();await wait(()=>document.querySelectorAll('.feed-ad').length===8,'No fill hides ad without disturbing posts');assert.equal(document.querySelectorAll('#feed article.post').length,29);assert.equal(window[fail],undefined,'Callbacks cleaned up');
+ const fail=renders.at(-1).dataset.adOnfail;window[fail]();await wait(()=>document.querySelectorAll('.feed-ad').length===adCount-1,'No fill hides ad without disturbing posts');assert.equal(document.querySelectorAll('#feed article.post').length,29);assert.equal(window[fail],undefined,'Callbacks cleaned up');
  Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});document.dispatchEvent(new Event('visibilitychange'));await wait(()=>occupied.size===0,'Background tab releases ads');
  window.doNotTrack='1';Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});document.dispatchEvent(new Event('visibilitychange'));await pause();assert.equal(occupied.size,0,'A changed DNT preference blocks new requests in an existing feed');window.doNotTrack=undefined;
- click('.rail a[data-view="search"]');await wait(()=>document.querySelectorAll('.explore-result').length===11,'Search navigation');assert.equal(document.querySelectorAll('.feed-ad-grid').length,2,'Search includes an ad card');assert.equal(occupied.size,0,'Old Home ads are destroyed on navigation');click('.load-more');await wait(()=>document.querySelectorAll('.explore-result').length===22,'Append search page two');click('.load-more');await wait(()=>document.querySelectorAll('.explore-result').length===29,'Append search page three');const searchCards=[...document.querySelector('.explore-results').children];assert.deepEqual(searchCards.flatMap((el,i)=>el.matches('.feed-ad')?[i]:[]),[4,9,14,19,24,29,34],'Search cadence stays correct across pages');assert.equal(document.querySelector('.explore-heading h2').textContent,'멤버 둘러보기','Ads do not replace the writer section');
+ click('.rail a[data-view="search"]');await wait(()=>document.querySelectorAll('.explore-result').length===11,'Search navigation');const searchFirstPage=positions();checkSpacing(searchFirstPage,11);assert.equal(occupied.size,0,'Old Home ads are destroyed on navigation');click('.load-more');await wait(()=>document.querySelectorAll('.explore-result').length===22,'Append search page two');click('.load-more');await wait(()=>document.querySelectorAll('.explore-result').length===29,'Append search page three');const searchCards=[...document.querySelector('.explore-results').children];const searchAds=positions();checkSpacing(searchAds,29);assert.deepEqual(searchAds.filter(after=>after<=11),searchFirstPage,'Search positions remain stable across pages');assert.equal(document.querySelector('.explore-heading h2').textContent,'멤버 둘러보기','Ads do not replace the writer section');
  click('.rail a[data-view="home"]');await wait(()=>document.querySelectorAll('.feed-ad').length>0,'Home ads return');click('.post-title[data-post="post-1"]');await wait(()=>document.querySelector('#reader-title'),'Reader opens');assert.equal(document.querySelectorAll('.feed-ad').length,0,'No ads behind reader');assert.equal(occupied.size,0);
  window.doNotTrack='1';await mount();assert.equal(document.querySelectorAll('.feed-ad').length,0,'DNT suppresses ads');window.doNotTrack=undefined;
  await mount();await wait(()=>sizes.some(item=>!item.closed&&item.element.matches('.feed-ad-stage')),'Resize effects mounted');const narrow=sizes.filter(item=>!item.closed&&item.element.matches('.feed-ad-stage'));narrow[0].callback([{contentRect:{width:280}}]);await wait(()=>document.querySelector('.feed-ad')?.dataset.fit==='false','Too narrow slots collapse');assert.equal(document.querySelector('.feed-ad').getAttribute('aria-hidden'),'true');
@@ -69,5 +79,5 @@ try{
  const {default:worker}=await vite.ssrLoadModule('/@fs/'+fileURLToPath(new URL('../apps/frontend/worker.ts',import.meta.url)).replaceAll('\\','/'));
  const env={ASSETS:{fetch:async()=>new Response('<html><head></head><body></body></html>',{headers:{'Content-Type':'text/html'}})},API:{fetch:async()=>Response.json({})}};
  for(const path of ['/home','/search','/write','/connect']){const response=await worker.fetch(new Request('https://21st-ark.dev'+path),env),csp=response.headers.get('Content-Security-Policy');assert.equal(csp.includes('https://t1.kakaocdn.net'),path!=='/connect');assert(csp.includes("script-src-attr 'none'"));assert(!csp.includes("'unsafe-eval'"));assert(csp.includes("frame-ancestors 'none'"));assert.equal(response.headers.get('Cache-Control'),'private, no-store');}
- console.log('AdFit passed: three-post Home/four-post search spacing across non-aligned pages, short-feed minimum-one behavior, no ads in empty feeds, search ad cards and reader exclusion, single lazy SDK, distinct concurrent units with reuse after destroy, no refresh, no-fill cleanup, DNT, hidden tab and unmount cleanup, narrow slots, strict OAuth CSP. No real ads requested or clicked.');
+ console.log('AdFit passed: seeded random 3–5-post Home/search spacing across non-aligned pages, short-feed minimum-one behavior, no ads in empty feeds, search ad cards and reader exclusion, single lazy SDK, distinct concurrent units with reuse after destroy, no refresh, no-fill cleanup, DNT, hidden tab and unmount cleanup, narrow slots, strict OAuth CSP. No real ads requested or clicked.');
 }finally{root?.unmount();await vite.close();dom.window.close();}
