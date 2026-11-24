@@ -1,10 +1,10 @@
 # Home and search advertising
 
-Home and search place a labelled AdFit slot after every three organic posts
-(after organic posts 3, 6, 9, 12, ...). Lists with only 1–2 posts retain one slot
-after the last post. Empty lists show no ad. Counts exclude advertisements and
-continue across appended pages. Pinned posts count as organic posts, so their
-ordering remains intact and the first ad follows the third post.
+Home places a labelled AdFit slot after every three organic posts (3, 6, 9, ...).
+Search places a slot after every four organic posts (4, 8, 12, ...). Each non-empty
+list shorter than its interval shows one slot after the last post. Empty lists
+show no ad. Counts exclude advertisements and continue across appended pages.
+Pinned posts count as organic posts and their ordering remains intact.
 Ad rendering still depends on AdFit fill, privacy preferences and available width.
 Ads are not stored as posts and do not change totals, likes or bookmarks.
 Search uses a matching card within the latest/results grid. Writer pages, saved

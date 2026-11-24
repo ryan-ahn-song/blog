@@ -3,7 +3,7 @@ import {adsAllowed,loadAdFit,reserveAdUnit} from './adfit';
 import './adfit.css';
 
 let callbackId=0;
-export function isFeedAdPosition(index,count){return (index+1)%3===0||(count>0&&count<3&&index===count-1);}
+export function isFeedAdPosition(index,count,interval=3){return (index+1)%interval===0||(count>0&&count<interval&&index===count-1);}
 export default function FeedAd({enabled=true,after,variant='feed'}){
   const host=useRef(null),[failed,setFailed]=useState(false),[fits,setFits]=useState(true);
   useEffect(()=>{
