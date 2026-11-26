@@ -1,4 +1,4 @@
-.embed-link-card{display:flex;align-items:center;gap:14px;width:100%;max-width:520px;padding:17px;color:#eee;border:1px solid #383838;border-radius:8px;background:#1e1e1e;text-decoration:none}
+.embed-link-card{display:flex;align-items:center;gap:14px;width:100%;max-width:100%;min-width:0;box-sizing:border-box;padding:17px;color:#eee;border:1px solid #383838;border-radius:8px;background:#1e1e1e;text-decoration:none}
 .embed-link-card:hover{background:#252525;border-color:#666}
 .embed-link-card .embed-link-copy{min-width:0;flex:1;display:block}
 .embed-link-symbol{display:grid;place-items:center;width:36px;height:40px;flex-shrink:0;background:#292e2b;border-radius:6px;color:#a8b9ae;font-size:20px}
